@@ -1,7 +1,7 @@
 import { useState } from 'react'; 
-import { Box, Button, TextField, Typography, Alert, CircularProgress, Checkbox, FormControlLabel, } from '@mui/material';
+import { Box, Button, TextField, Typography, Alert, CircularProgress, Checkbox, FormControlLabel, Link, } from '@mui/material';
 
-const accentColor = '#0AC8B9';
+const accentColor = '#39d3d3';
 
 export default function Login(){
     const [email, setEmail] = useState('');
@@ -42,7 +42,7 @@ export default function Login(){
         
         <Box
             sx={{
-            width: { xs: '100%', md: 380 },
+            width: { xs: '100%', md: 600 },
             backgroundColor: '#111318',
             display: 'flex',
             flexDirection: 'column',
@@ -52,11 +52,46 @@ export default function Login(){
             zIndex: 1,
             transition: 'width 0.4s ease, box-shadow 0.4s ease',
             '&:hover': {
-                width: { xs: '100%', md: 680 },
+                width: { xs: '100%', md: 800 },
                 boxShadow: '10px 0 40px rgba(0, 0, 0, 1)',
+                backgroundColor: '#050505',
             },
-            }}
+
+            '&:hover .brand-title' : {
+                color: '#000000',
+                fontSize: 62,
+            },
+            '&:hover .sign-in-lablel': {
+                color: '#ffffff',
+            },
+            '&:hover .MuiInputBase-input': {
+            color: '#ffffff',
+            },
+            '&:hover .MuiInput-underline:before': {
+            borderBottomColor: '#111318',
+            },
+            '&:hover .MuiFormLabel-root, &:hover .MuiInputLabel-root': {
+            color: '#111318',
+            },
+            '&:hover .stay-signed-in-label': {
+            color: '#d31717',
+            },
+          }}
         >
+            <Typography
+                className="brand-title"
+                sx={{
+                color: '#fdfdfc',
+                fontSize: 42,
+                fontWeight: 700,
+                mb: 4,
+                letterSpacing: 0.5,
+                transition: 'color 0.4s ease, font-size 0.4s ease',
+              }}
+            >
+              LevelUp.GG
+            </Typography>
+
             <Typography
             sx={{
                 color: '#e5e5e5',
@@ -66,7 +101,7 @@ export default function Login(){
                 fontWeight: 500,
             }}
             >
-            SIGN IN
+            SIGN-IN
             </Typography>
 
             {error && (
@@ -121,7 +156,7 @@ export default function Login(){
                     checked={staySignedIn}
                     onChange={(e) => setStaySignedIn(e.target.checked)}
                     sx={{
-                    color: '#555',
+                    color: '#ffffff',
                     '&.Mui-checked': { color: accentColor },
                     }}
                 />
@@ -143,7 +178,7 @@ export default function Login(){
                 color: '#0d0d0d',
                 fontWeight: 600,
                 py: 1.2,
-                '&:hover': { backgroundColor: '#08a89b' },
+                '&:hover': { backgroundColor: '#ffffff' },
                 }}
             >
                 {loading ? <CircularProgress size={22} sx={{ color: '#0d0d0d' }} /> : 'LOGIN'}
