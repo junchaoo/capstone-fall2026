@@ -6,9 +6,11 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import VolumeOffIcon from '@mui/icons-material/VolumeOff';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
-// Teal accent color used for inputs, checkbox, and button
-const accentColor = '#39d3d3';
+//accent color used for inputs, checkbox, and button
+const accentColor = '#D9B872';
+const navyBg = '#0B0E1A';
 
 export default function Login(){
     // Form field values
@@ -34,6 +36,8 @@ export default function Login(){
     const videoRef = useRef<HTMLVideoElement>(null);
     const [isPlaying, setIsPlaying] = useState(true);
     const [isMuted, setIsMuted] = useState(true);
+
+    const [isHovering, setIsHovering] = useState(false);
 
     const togglePlay = () => {
         const video = videoRef.current;
@@ -101,9 +105,11 @@ export default function Login(){
         <Box sx={{ display: 'flex', height: '100vh', width: '100%', overflow: 'hidden' }}>
             {/* FORM PANEL — always stays on the left, only its content fades */}
             <Box
+                onMouseEnter = {() => setIsHovering(true)}
+                onMouseLeave = {() => setIsHovering(false)}
                 sx={{
                     width: { xs: '100%', md: 580 },
-                    backgroundColor: '#111318',
+                    backgroundColor: navyBg,
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'center',
@@ -113,23 +119,73 @@ export default function Login(){
                     transition: 'width 0.4s ease, background-color 0.4s ease, box-shadow 0.4s ease',
                     '&:hover': {
                         width: { xs: '100%', md: 780 },
-                        backgroundColor: '#ffffff',
+                        backgroundColor: '#071830',
                         boxShadow: '10px 0 40px rgba(0, 0, 0, 0.6)',
                     },
                     '&:hover .brand-title': { color: '#111318', fontSize: 50 },
-                    '&:hover .form-label': { color: '#111318' },
-                    '&:hover .MuiInputBase-input': { color: '#111318' },
+                    '&:hover .form-label': { color: '#D9B872' },
+                    '&:hover .MuiInputBase-input': { color: '#D9B872' },
                     '&:hover .MuiInput-underline:before': { borderBottomColor: '#111318' },
-                    '&:hover .switch-link': { color: '#111318' },
+                    '&:hover .switch-link': { color: '#8a6d2f' },
+                    '&:hover .logo-wrapper': { transform: 'scale(1.20)', },
                 }}
-            >
-                <Typography
-                    className="brand-title"
-                    sx={{ color: '#fff', fontSize: 38, fontWeight: 700, mb: 4, letterSpacing: 0.5, transition: 'color 0.4s ease, font-size 0.4s ease' }}
-                >
-                    LevelUp.GG
+            > 
+
+                    {/* "Back to home" — always visible, top-right */}
+                    <Box
+                        sx={{
+                            position: 'absolute',
+                            top: 24,
+                            left: 32,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1,
+                            zIndex: 2,
+                            cursor: 'pointer',
+                            color: '#ccc',
+                            '&:hover': { color: '#fff' },
+                            transition: 'color 0.2s ease',
+                        }}
+                        onClick={() => console.log('Back to home clicked — wire up navigation later')}
+                        >
+                        <ArrowBackIcon sx={{ fontSize: 18 }} />
+                        <Typography sx={{ fontSize: 14 }}>Back to home</Typography>
+                    </Box>
+
+                    <Box
+                        className="logo-wrapper"
+                        sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1.5,
+                            mb: 5,
+                            transformOrigin: 'left center',
+                            transition: 'transform 0.4s ease',
+                        }}
+                    >
+                    <Box
+                        sx={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: '10px',
+                            backgroundColor: accentColor,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 700,
+                            fontSize: 25,
+                            color: '#1a1408',
+                            flexShrink: 0,
+                        }}
+                    >
+                        L
+                </Box>
+                
+                <Typography sx={{ color: '#D9B872', fontSize: 30, fontWeight: 600 }}>
+                    LevelUp.gg
                 </Typography>
 
+            </Box>
                 {/* Wrapper that actually fades/slides when switching modes */}
                 <Box
                     sx={{
@@ -171,7 +227,7 @@ export default function Login(){
                                 sx={{ mb: 2 }}
                             />
                             <Button type="submit" fullWidth disabled={loading}
-                                sx={{ backgroundColor: accentColor, color: '#0d0d0d', fontWeight: 600, py: 1.2, '&:hover': { backgroundColor: '#08a89b' } }}
+                                sx={{ backgroundColor: accentColor, color: '#0d0d0d', fontWeight: 600, py: 1.2, '&:hover': { backgroundColor: '#C9A75E' } }}
                             >
                                 {loading ? <CircularProgress size={22} sx={{ color: '#0d0d0d' }} /> : 'LOGIN'}
                             </Button>
@@ -207,7 +263,7 @@ export default function Login(){
                                 sx={{ mb: 2, input: { color: '#fff' } }}
                             />
                             <Button type="submit" fullWidth disabled={loading}
-                                sx={{ backgroundColor: accentColor, color: '#0d0d0d', fontWeight: 600, py: 1.2, '&:hover': { backgroundColor: '#08a89b' } }}
+                                sx={{ backgroundColor: accentColor, color: '#0d0d0d', fontWeight: 600, py: 1.2, '&:hover': { backgroundColor: '#C9A75E' } }}
                             >
                                 {loading ? <CircularProgress size={22} sx={{ color: '#0d0d0d' }} /> : 'SIGN UP'}
                             </Button>
@@ -244,13 +300,52 @@ export default function Login(){
                         loop
                         muted
                         playsInline
-                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: isHovering ? 0.35 : 1, transition: 'opacity 0.5s ease', }}
                     >
                         <source src="/lolvideo.mp4" type="video/mp4" />
                     </video>
+
                     <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, rgba(0,0,0,0.4), rgba(0,0,0,0))' }} />
 
-                    {/* Video control buttons — bottom-right corner */}
+                
+
+                    {/* Video control buttons — bottom-right corner and text overlay*/}
+                    <Box
+                        sx={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        px: 8,
+                        opacity: isHovering ? 1 : 0,
+                        transform: isHovering ? 'translateY(0)' : 'translateY(10px)',
+                        transition: 'opacity 0.5s ease, transform 0.5s ease',
+                        pointerEvents: 'none', // so this text never blocks clicks on the video below it
+                    }}
+                    >
+                        <Typography sx={{ color: accentColor, letterSpacing: 2, fontSize: 13, fontWeight: 700, mb: 2 }}>
+                        YOUR GAME, IN FOCUS
+                        </Typography>
+
+                        <Typography sx={{ color: '#fff', fontSize: 70, fontWeight: 800, lineHeight: 1.1, mb: 3 }}>
+                        Every match<br />moves you<br />forward.
+                        </Typography>
+
+                        <Typography sx={{ color: accentColor, fontSize: 16, maxWidth: 420 }}>
+                        Pick up where you left off and keep building your climb.
+                        </Typography>
+
+                        {/* Tagline */}
+                        <Typography sx={{ color: accentColor, letterSpacing: 2, fontSize: 12, fontWeight: 600 }}>
+                            COMPETE &bull; ANALYZE &bull; IMPROVE
+                        </Typography>
+
+                    </Box>
+
                     <Box sx={{ position: 'absolute', bottom: 24, right: 24, display: 'flex', gap: 2 }}>
                         <IconButton
                             onClick={togglePlay}
