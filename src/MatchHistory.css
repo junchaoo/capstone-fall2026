@@ -1,0 +1,116 @@
+.match-history 
+{
+  max-width: 640px;
+  margin: 0 auto;
+  overflow-y: hidden;
+}
+
+.match-history__header 
+{
+  margin-top: 20px; 
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.match-history__icon 
+{
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+}
+
+.match-history__tag 
+{
+  color: #2c2a2a;
+  font-weight: 400;
+  margin-left: 4px;
+  font-size: 1rem;
+}
+
+.match-history__list 
+{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.match-history__status 
+{
+  text-align: center;
+  padding: 2rem;
+  color: #888;
+}
+
+.match-history__status--error 
+{
+  color: #d9534f;
+}
+
+.match-card 
+{
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-left: 5px solid transparent;
+  border-radius: 4px;
+  background: #f5f6f8;
+}
+
+.match-card--win 
+{
+  border-left-color: #f8ad23;
+  background: #fceac3;
+}
+
+.match-card--loss 
+{
+  border-left-color: #f73939;
+  background: #fdeeee;
+}
+
+.match-card__champion 
+{
+  width: 48px;
+  height: 48px;
+  border-radius: 10%;
+}
+
+.match-card__info 
+{
+  display: flex;
+  flex-direction: column;
+  width: 70px;
+  font-size: 1rem;
+}
+
+.match-card__result 
+{
+  font-weight: 600;
+}
+
+.match-card__duration 
+{
+  color: #3d3737;
+}
+
+.match-card__stats 
+{
+  display: flex;
+  flex-direction: column;
+  margin-left: auto;
+  text-align: right;
+}
+
+.match-card__kda-text 
+{
+  font-weight: bold;
+}
+
+.match-card__kda-ratio 
+{
+  font-size: 0.9rem;
+  color: #3d3737;
+}
