@@ -367,7 +367,7 @@ def batch_cache_matches(
                 db.commit()
                 cached_count += 1
         except Exception:
-            continue  # Skip individual match fetch errors to keep batch running smoothly
+            continue  
 
     return {
         "status": "success",
@@ -489,34 +489,21 @@ def get_player_analytics(
 ):
     clean_puuid = puuid.strip()
 
-    matches = (
-        db.query(models.MatchRecord)
-        .filter(models.MatchRecord.puuid == clean_puuid)
-        .all()
-    )
+    # Start building the query
+    query = db.query(models.MatchRecord).filter(models.MatchRecord.puuid == clean_puuid)
+
+    # Filter directly by queue_id if provided and valid
+    if queue is not None and queue in CORE_QUEUES:
+        query = query.filter(models.MatchRecord.queue_id == queue)
+
+    matches = query.all()
 
     if not matches:
+        queue_name = CORE_QUEUES.get(queue, "this queue") if queue else "this player"
         raise HTTPException(
             status_code=404,
-            detail="No match records cached in local database for this PUUID. Load some matches first!",
+            detail=f"No cached games found in local database for {queue_name}.",
         )
-
-    # Filter by specific queue mode if requested
-    if queue is not None and queue in CORE_QUEUES:
-        if queue == 450:
-            target_mode = "ARAM"
-        elif queue == 490:
-            target_mode = "SWIFTPLAY"
-        else:
-            target_mode = "CLASSIC"
-            
-        matches = [m for m in matches if m.game_mode == target_mode]
-
-        if not matches:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No cached games found in local database for {CORE_QUEUES[queue]}.",
-            )
 
     total_games = len(matches)
     wins = sum(1 for m in matches if m.win)
@@ -532,7 +519,7 @@ def get_player_analytics(
     avg_assists = round(total_assists / total_games, 1)
     overall_kda = round((total_kills + total_assists) / max(1, total_deaths), 2)
 
-    # Top Champions played breakdown with champion icon details included
+    # Top Champions played breakdown with champion icon details
     champ_counts = Counter(m.champion_name for m in matches)
     champ_stats = []
 
