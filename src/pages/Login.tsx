@@ -1,5 +1,5 @@
 import { useState } from 'react'; 
-import { Box, Button, TextField, Typography, Alert, CircularProgress, Checkbox, FormControlLabel, Link, } from '@mui/material';
+import { Box, Button, TextField, Typography, Alert, CircularProgress, Checkbox, FormControlLabel, Link, InputAdornment } from '@mui/material';
 import { useRef } from 'react';
 import IconButton from '@mui/material/IconButton';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
@@ -7,7 +7,9 @@ import PauseIcon from '@mui/icons-material/Pause';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import VolumeOffIcon from '@mui/icons-material/VolumeOff';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { LocalGasStationRounded } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
+import Visibility from '@mui/icons-material/Visibility';
+import VisibilityOff from '@mui/icons-material/VisibilityOff';
 
 //accent color used for inputs, checkbox, and button
 const accentColor = '#D9B872';
@@ -15,14 +17,31 @@ const navyBg = '#0B0E1A';
 
 const API_URL = 'http://127.0.0.1:8000';
 
-//Turns the error the backend send into a readible message
-const getErrorMessage = (data: { detail?: unknown}): string => {
-    if(typeof data.detail === 'string') return data.detail;
-    if (Array.isArray(data.detail)) return 'Please enter a vaild email address and password.';
-    return 'SOmethign went wrong. Please try again.';
+//Turns the error the backend sends into a readable message
+const getErrorMessage = (data: { detail?: unknown }): string => {
+    if (typeof data.detail === 'string') return data.detail;
+    if (Array.isArray(data.detail)) return 'Please enter a valid email address and password.';
+    return 'Something went wrong. Please try again.';
 };
 
+// Shared look for the text boxes and their labels
+const fieldSx = {
+    '& .MuiOutlinedInput-root': {
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderRadius: '6px',
+        color: '#fff',
+        '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
+        '&:hover fieldset': { borderColor: accentColor },
+        '&.Mui-focused fieldset': { borderColor: accentColor },
+    },
+    '& input::placeholder': { color: '#7d8397', opacity: 1 },
+};
+
+const labelSx = { color: '#cfd3e0', fontSize: 13, fontWeight: 600, mb: 0.75 };
+
 export default function Login(){
+    const navigate = useNavigate();
+
     // Form field values
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -38,6 +57,12 @@ export default function Login(){
     // Error message + loading state (for the submit button spinner)
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+
+    // Info message (used by "Forgot password?" until reset is built)
+    const [notice, setNotice] = useState('');
+
+    // Show/hide password (the eye icon)
+    const [showPassword, setShowPassword] = useState(false);
 
     // "Stay signed in" checkbox value
     const [staySignedIn, setStaySignedIn] = useState(false);
@@ -71,15 +96,39 @@ export default function Login(){
     const switchMode = (newMode: 'signin' | 'signup') => {
         setVisible(false);
         setError('');
+        setNotice('');
+        setShowPassword(false);
         setTimeout(() => {
             setMode(newMode);
             setVisible(true);
         }, 200); 
     }
 
+    // UI only for now, no reset flow on the backend yet
+    const handleForgotPassword = () => {
+        setError('');
+        setNotice('Password reset is not available yet.');
+    };
+
+    // The eye icon inside the password boxes
+    const passwordToggle = (
+        <InputAdornment position="end">
+            <IconButton
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                onClick={() => setShowPassword((v) => !v)}
+                onMouseDown={(e) => e.preventDefault()}
+                edge="end"
+                sx={{ color: '#9aa0b4' }}
+            >
+                {showPassword ? <VisibilityOff /> : <Visibility />}
+            </IconButton>
+        </InputAdornment>
+    );
+
     const handleSignIn = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setNotice('');
         if (!email || !password){
             setError('Please fill in both fields.');
             return;
@@ -90,38 +139,35 @@ export default function Login(){
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password }),
-        });
-        const data = await response.json();
+            });
+            const data = await response.json();
 
-        if (!response.ok){
-            setError(getErrorMessage(data));
-            return;
-        }
+            if (!response.ok){
+                setError(getErrorMessage(data));
+                return;
+            }
 
-        const storage = staySignedIn ? localStorage: sessionStorage;
-        storage.setItem('token', data.access_token);
-        console.log("Logged in, token saved");
-
+            // "Stay signed in" decides where the token is kept
+            const storage = staySignedIn ? localStorage : sessionStorage;
+            storage.setItem('token', data.access_token);
+            navigate('/');
         } catch {
-        
             setError('Cannot reach the server. Is the backend running?');
-        
         } finally {
-        
             setLoading(false);
-        
         }
     };
 
     const handleSignUp = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(''); 
+        setNotice('');
         if (!signupEmail || !signupPassword || !confirmPassword) {
             setError('Please fill in all fields.');
             return;
         }
         if (signupPassword !== confirmPassword){
-            setError('Password do not match.');
+            setError('Passwords do not match.');
             return;
         }
         setLoading(true);
@@ -139,7 +185,7 @@ export default function Login(){
             }
 
             sessionStorage.setItem('token', data.access_token);
-            console.log('Account created, token saved');
+            navigate('/');
         } catch {
             setError('Cannot reach the server. Is the backend running?');
         } finally {
@@ -150,7 +196,7 @@ export default function Login(){
     const isSignIn = mode === 'signin'; 
 
     return (
-        <Box sx={{ display: 'flex', height: '100vh', width: '100%', overflow: 'hidden' }}>
+        <Box sx={{ display: 'flex', height: '100vh', width: '100%', overflow: 'hidden', textAlign: 'left' }}>
             {/* FORM PANEL — always stays on the left, only its content fades */}
             <Box
                 onMouseEnter = {() => setIsHovering(true)}
@@ -166,7 +212,7 @@ export default function Login(){
                     zIndex: 1,
                     transition: 'width 0.4s ease, background-color 0.4s ease, box-shadow 0.4s ease',
                     '&:hover': {
-                        width: { xs: '100%', md: 780 },
+                        width: { xs: '100%', md: 620 },
                         backgroundColor: '#071830',
                         boxShadow: '10px 0 40px rgba(0, 0, 0, 0.6)',
                     },
@@ -176,11 +222,14 @@ export default function Login(){
                     '&:hover .MuiInput-underline:before': { borderBottomColor: '#111318' },
                     '&:hover .switch-link': { color: '#8a6d2f' },
                     '&:hover .logo-wrapper': { transform: 'scale(1.20)', },
+                    '&:hover .form-scale': { transform: 'scale(1.12)' },
+                    '&:hover .back-home': { transform: 'scale(1.15)' },
                 }}
             > 
 
-                    {/* "Back to home" — always visible, top-right */}
+                    {/* "Back to home" — always visible, top-left */}
                     <Box
+                        className="back-home"
                         sx={{
                             position: 'absolute',
                             top: 24,
@@ -191,11 +240,12 @@ export default function Login(){
                             zIndex: 2,
                             cursor: 'pointer',
                             color: '#ccc',
+                            transformOrigin: 'left center',
                             '&:hover': { color: '#fff' },
-                            transition: 'color 0.2s ease',
+                            transition: 'color 0.2s ease, transform 0.4s ease',
                         }}
-                        onClick={() => console.log('Back to home clicked — wire up navigation later')}
-                        >
+                        onClick={() => navigate('/')}
+                    >
                         <ArrowBackIcon sx={{ fontSize: 18 }} />
                         <Typography sx={{ fontSize: 14 }}>Back to home</Typography>
                     </Box>
@@ -236,12 +286,22 @@ export default function Login(){
             </Box>
                 {/* Wrapper that actually fades/slides when switching modes */}
                 <Box
+                    className = "form-scale"
+                    sx={{
+                        maxWidth: 420,
+                        width: '100%',
+                        transformOrigin: 'left top',
+                        transition: 'transform 0.4s ease',
+                    }}
+                >
+                {/* Inner box: fades/slides when switching modes */}
+                <Box
                     sx={{
                         transition: 'opacity 0.2s ease, transform 0.2s ease',
                         opacity: visible ? 1 : 0,
                         transform: visible ? 'translateY(0)' : 'translateY(6px)',
                     }}
-                >
+                ></Box>
                     <Typography
                         className="form-label"
                         sx={{ color: '#e5e5e5', letterSpacing: 3, fontSize: 14, mb: 3, fontWeight: 500, transition: 'color 0.4s ease' }}
@@ -250,19 +310,41 @@ export default function Login(){
                     </Typography>
 
                     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+                    {notice && <Alert severity="info" sx={{ mb: 2 }}>{notice}</Alert>}
 
                     {isSignIn ? (
                         <form onSubmit={handleSignIn}>
+                            <Typography sx={labelSx}>EMAIL</Typography>
                             <TextField
-                                variant="standard" placeholder="EMAIL" fullWidth
-                                value={email} onChange={(e) => setEmail(e.target.value)}
-                                sx={{ mb: 2, input: { color: '#fff' } }}
+                                placeholder="you@example.com"
+                                fullWidth
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                sx={{ ...fieldSx, mb: 2.5 }}
                             />
+
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                                <Typography sx={labelSx}>PASSWORD</Typography>
+                                <Link
+                                    component="button"
+                                    type="button"
+                                    underline="hover"
+                                    onClick={handleForgotPassword}
+                                    sx={{ color: accentColor, fontSize: 12 }}
+                                >
+                                    Forgot password?
+                                </Link>
+                            </Box>
                             <TextField
-                                variant="standard" placeholder="PASSWORD" type="password" fullWidth
-                                value={password} onChange={(e) => setPassword(e.target.value)}
-                                sx={{ mb: 1, input: { color: '#fff' } }}
+                                placeholder="Enter your password"
+                                type={showPassword ? 'text' : 'password'}
+                                fullWidth
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                slotProps={{ input: { endAdornment: passwordToggle } }}
+                                sx={{ ...fieldSx, mb: 1 }}
                             />
+
                             <FormControlLabel
                                 control={
                                     <Checkbox
@@ -295,21 +377,37 @@ export default function Login(){
                         </form>
                     ) : (
                         <form onSubmit={handleSignUp}>
+                            <Typography sx={labelSx}>EMAIL</Typography>
                             <TextField
-                                variant="standard" placeholder="EMAIL" fullWidth
-                                value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)}
-                                sx={{ mb: 2, input: { color: '#fff' } }}
+                                placeholder="you@example.com"
+                                fullWidth
+                                value={signupEmail}
+                                onChange={(e) => setSignupEmail(e.target.value)}
+                                sx={{ ...fieldSx, mb: 2.5 }}
                             />
+
+                            <Typography sx={labelSx}>PASSWORD</Typography>
                             <TextField
-                                variant="standard" placeholder="PASSWORD" type="password" fullWidth
-                                value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)}
-                                sx={{ mb: 2, input: { color: '#fff' } }}
+                                placeholder="Create a password"
+                                type={showPassword ? 'text' : 'password'}
+                                fullWidth
+                                value={signupPassword}
+                                onChange={(e) => setSignupPassword(e.target.value)}
+                                slotProps={{ input: { endAdornment: passwordToggle } }}
+                                sx={{ ...fieldSx, mb: 2.5 }}
                             />
+
+                            <Typography sx={labelSx}>CONFIRM PASSWORD</Typography>
                             <TextField
-                                variant="standard" placeholder="CONFIRM PASSWORD" type="password" fullWidth
-                                value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
-                                sx={{ mb: 2, input: { color: '#fff' } }}
+                                placeholder="Enter it again"
+                                type={showPassword ? 'text' : 'password'}
+                                fullWidth
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                slotProps={{ input: { endAdornment: passwordToggle } }}
+                                sx={{ ...fieldSx, mb: 3 }}
                             />
+
                             <Button type="submit" fullWidth disabled={loading}
                                 sx={{ backgroundColor: accentColor, color: '#0d0d0d', fontWeight: 600, py: 1.2, '&:hover': { backgroundColor: '#C9A75E' } }}
                             >
