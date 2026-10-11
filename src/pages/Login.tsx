@@ -7,10 +7,20 @@ import PauseIcon from '@mui/icons-material/Pause';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import VolumeOffIcon from '@mui/icons-material/VolumeOff';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import { LocalGasStationRounded } from '@mui/icons-material';
 
 //accent color used for inputs, checkbox, and button
 const accentColor = '#D9B872';
 const navyBg = '#0B0E1A';
+
+const API_URL = 'http://127.0.0.1:8000';
+
+//Turns the error the backend send into a readible message
+const getErrorMessage = (data: { detail?: unknown}): string => {
+    if(typeof data.detail === 'string') return data.detail;
+    if (Array.isArray(data.detail)) return 'Please enter a vaild email address and password.';
+    return 'SOmethign went wrong. Please try again.';
+};
 
 export default function Login(){
     // Form field values
@@ -75,9 +85,32 @@ export default function Login(){
             return;
         }
         setLoading(true);
-        await new Promise ((r) => setTimeout(r, 1000));
-        console.log("Sign in:", { email, password, staySignedIn });
-        setLoading(false);
+        try {
+            const response = await fetch(`${API_URL}/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password }),
+        });
+        const data = await response.json();
+
+        if (!response.ok){
+            setError(getErrorMessage(data));
+            return;
+        }
+
+        const storage = staySignedIn ? localStorage: sessionStorage;
+        storage.setItem('token', data.access_token);
+        console.log("Logged in, token saved");
+
+        } catch {
+        
+            setError('Cannot reach the server. Is the backend running?');
+        
+        } finally {
+        
+            setLoading(false);
+        
+        }
     };
 
     const handleSignUp = async (e: React.FormEvent) => {
@@ -92,14 +125,29 @@ export default function Login(){
             return;
         }
         setLoading(true);
-        await new Promise((r) => setTimeout(r,1000));
-        console.log('Sign up:', {signupEmail, signupPassword});
-        setLoading(false);
+        try {
+            const response = await fetch(`${API_URL}/signup`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: signupEmail, password: signupPassword }),
+            });
+            const data = await response.json();
+
+            if (!response.ok){
+                setError(getErrorMessage(data));
+                return;
+            }
+
+            sessionStorage.setItem('token', data.access_token);
+            console.log('Account created, token saved');
+        } catch {
+            setError('Cannot reach the server. Is the backend running?');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const isSignIn = mode === 'signin'; 
-
-    
 
     return (
         <Box sx={{ display: 'flex', height: '100vh', width: '100%', overflow: 'hidden' }}>
@@ -206,7 +254,7 @@ export default function Login(){
                     {isSignIn ? (
                         <form onSubmit={handleSignIn}>
                             <TextField
-                                variant="standard" placeholder="USERNAME" fullWidth
+                                variant="standard" placeholder="EMAIL" fullWidth
                                 value={email} onChange={(e) => setEmail(e.target.value)}
                                 sx={{ mb: 2, input: { color: '#fff' } }}
                             />
