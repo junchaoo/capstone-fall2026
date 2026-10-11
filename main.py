@@ -26,6 +26,7 @@ CORE_QUEUES = {
     400: "Normal Draft Pick",
     440: "Ranked Flex",
     450: "Standard ARAM",
+    490: "Quickplay / Swiftplay",
 }
 
 DDRAGON_VERSION = "14.1.1"  # Fallback patch version
@@ -130,7 +131,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="League of Legends Core Analytics Backend",
-    description="Analytics system focused on Normal Draft (400), Ranked Flex (440), and Standard ARAM (450).",
+    description="Analytics system focused on Normal Draft (400), Ranked Flex (440), Standard ARAM (450), and Quickplay/Swiftplay (490).",
     lifespan=lifespan,
 )
 
@@ -183,6 +184,21 @@ def get_item_details(raw_item_ids):
     return item_details_list
 
 
+def get_champion_details(champion_name: str):
+    """Retrieves champion name and CDN icon URL from the global CHAMPION_MAP."""
+    for details in CHAMPION_MAP.values():
+        if details["name"].lower() == champion_name.lower() or details["id"].lower() == champion_name.lower():
+            return {
+                "name": details["name"],
+                "icon": details["icon"]
+            }
+    # Fallback if name doesn't match directly in map keys
+    return {
+        "name": champion_name,
+        "icon": f"https://ddragon.leagueoflegends.com/cdn/{DDRAGON_VERSION}/img/champion/{champion_name}.png"
+    }
+
+
 @app.get("/")
 def read_root():
     return {
@@ -191,7 +207,7 @@ def read_root():
     }
 
 
-#Checks SQLite cache first before querying Riot Account API
+# Checks SQLite cache first before querying Riot Account API
 @app.get("/api/player/{region}/{game_name}/{tag_line}")
 def get_or_fetch_player(
     region: str, game_name: str, tag_line: str, db: Session = Depends(get_db)
@@ -200,7 +216,7 @@ def get_or_fetch_player(
     cluster_region = CLUSTER_MAPPING.get(clean_region, "americas")
     platform_region = PLATFORM_MAPPING.get(clean_region, "na1")
 
-    #Check local SQLite cache first (case-insensitive search)
+    # Check local SQLite cache first (case-insensitive search)
     db_player = (
         db.query(models.Player)
         .filter(
@@ -213,7 +229,7 @@ def get_or_fetch_player(
     if db_player:
         return {"source": "database_cache", "data": db_player}
 
-    #Fetch from Riot API if missing in local DB
+    # Fetch from Riot API if missing in local DB
     try:
         account = riot_watcher.account.by_riot_id(
             cluster_region, game_name, tag_line
@@ -266,14 +282,14 @@ def get_player_matches(
     clean_region = region.strip().lower()
     cluster_region = CLUSTER_MAPPING.get(clean_region, "americas")
 
+    # Fetch matches from Riot without forcing the queue parameter in the watcher 
+    # to avoid Riot API dropping newer fast modes like Swiftplay
     kwargs = {
         "region": cluster_region,
         "puuid": clean_puuid,
         "start": start,
         "count": min(count, 100),
     }
-    if queue is not None:
-        kwargs["queue"] = queue
 
     try:
         match_ids = lol_watcher.match.matchlist_by_puuid(**kwargs)
@@ -289,7 +305,6 @@ def get_player_matches(
             "count": len(match_ids),
             "match_ids": match_ids,
         }
-
     except ApiError as err:
         status_code = err.response.status_code if hasattr(err, "response") else 400
         print(f"\n[RIOT API ERROR - Matchlist] Status: {status_code} | Details: {err}\n")
@@ -298,8 +313,70 @@ def get_player_matches(
             detail=f"Riot API Error ({status_code}): Could not fetch match list",
         )
 
+# NEW: Batch-caches multiple matches for a player into SQLite in one go
+@app.post("/api/matches/{region}/{puuid}/batch-cache")
+def batch_cache_matches(
+    region: str, puuid: str, count: int = 5, db: Session = Depends(get_db)
+):
+    clean_puuid = puuid.strip()
+    clean_region = region.strip().lower()
+    cluster_region = CLUSTER_MAPPING.get(clean_region, "americas")
 
-# Stores match details and uses get_item_details()
+    try:
+        match_ids = lol_watcher.match.matchlist_by_puuid(
+            region=cluster_region, puuid=clean_puuid, count=min(count, 20)
+        )
+    except ApiError as err:
+        raise HTTPException(status_code=400, detail="Could not retrieve match list for batch caching.")
+
+    cached_count = 0
+    for match_id in match_ids:
+        # Check if already in local DB
+        existing = db.query(models.MatchRecord).filter_by(match_id=match_id, puuid=clean_puuid).first()
+        if existing:
+            continue
+
+        try:
+            match_data = lol_watcher.match.by_id(cluster_region, match_id)
+            info = match_data["info"]
+            s_player = next((p for p in info["participants"] if p["puuid"] == clean_puuid), None)
+
+            if s_player:
+                is_win = s_player["win"]
+                kills = s_player["kills"]
+                deaths = s_player["deaths"]
+                assists = s_player["assists"]
+                kda_ratio = round((kills + assists) / max(1, deaths), 2)
+                raw_items = [s_player[f"item{i}"] for i in range(7)]
+
+                new_match = models.MatchRecord(
+                    match_id=match_id,
+                    puuid=clean_puuid,
+                    champion_name=s_player["championName"],
+                    outcome="Victory" if is_win else "Defeat",
+                    win=is_win,
+                    kills=kills,
+                    deaths=deaths,
+                    assists=assists,
+                    kda_ratio=kda_ratio,
+                    items_json=json.dumps(raw_items),
+                    game_mode=info["gameMode"],
+                    game_duration_seconds=info["gameDuration"],
+                )
+                db.add(new_match)
+                db.commit()
+                cached_count += 1
+        except Exception:
+            continue  # Skip individual match fetch errors to keep batch running smoothly
+
+    return {
+        "status": "success",
+        "puuid": clean_puuid,
+        "newly_cached_matches": cached_count,
+    }
+
+
+# Stores match details and uses get_item_details() and get_champion_details()
 @app.get("/api/match/{region}/{match_id}/{puuid}/outcome")
 def get_match_outcome(
     region: str, match_id: str, puuid: str, db: Session = Depends(get_db)
@@ -325,7 +402,7 @@ def get_match_outcome(
             "data": {
                 "match_id": cached_match.match_id,
                 "puuid": cached_match.puuid,
-                "champion_name": cached_match.champion_name,
+                "champion": get_champion_details(cached_match.champion_name),
                 "outcome": cached_match.outcome,
                 "win": cached_match.win,
                 "kills": cached_match.kills,
@@ -383,7 +460,7 @@ def get_match_outcome(
             "data": {
                 "match_id": new_match.match_id,
                 "puuid": new_match.puuid,
-                "champion_name": new_match.champion_name,
+                "champion": get_champion_details(new_match.champion_name),
                 "outcome": new_match.outcome,
                 "win": new_match.win,
                 "kills": new_match.kills,
@@ -405,7 +482,7 @@ def get_match_outcome(
         )
 
 
-# Computes stats filtered across Draft (400), Flex (440), and ARAM (450)
+# Computes stats filtered across Draft (400), Flex (440), ARAM (450), and Swiftplay (490)
 @app.get("/api/analytics/{puuid}")
 def get_player_analytics(
     puuid: str, queue: int | None = None, db: Session = Depends(get_db)
@@ -424,15 +501,21 @@ def get_player_analytics(
             detail="No match records cached in local database for this PUUID. Load some matches first!",
         )
 
-    # Filter by specific queue mode if requested (400, 440, or 450)
+    # Filter by specific queue mode if requested
     if queue is not None and queue in CORE_QUEUES:
-        target_mode = "ARAM" if queue == 450 else "CLASSIC"
+        if queue == 450:
+            target_mode = "ARAM"
+        elif queue == 490:
+            target_mode = "SWIFTPLAY"
+        else:
+            target_mode = "CLASSIC"
+            
         matches = [m for m in matches if m.game_mode == target_mode]
 
         if not matches:
             raise HTTPException(
                 status_code=404,
-                detail=f"No cached games found for {CORE_QUEUES[queue]} (Queue {queue}).",
+                detail=f"No cached games found in local database for {CORE_QUEUES[queue]}.",
             )
 
     total_games = len(matches)
@@ -449,7 +532,7 @@ def get_player_analytics(
     avg_assists = round(total_assists / total_games, 1)
     overall_kda = round((total_kills + total_assists) / max(1, total_deaths), 2)
 
-    # Top Champions played breakdown
+    # Top Champions played breakdown with champion icon details included
     champ_counts = Counter(m.champion_name for m in matches)
     champ_stats = []
 
@@ -460,7 +543,7 @@ def get_player_analytics(
 
         champ_stats.append(
             {
-                "champion": champ_name,
+                "champion": get_champion_details(champ_name),
                 "games_played": count,
                 "wins": champ_wins,
                 "losses": count - champ_wins,
