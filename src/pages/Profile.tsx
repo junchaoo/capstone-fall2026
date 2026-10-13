@@ -102,14 +102,33 @@ function parseMatch(value: unknown): ProfileMatch | null {
   const deaths = metric(match, ['deaths', 'death']);
   const assists = metric(match, ['assists', 'assist']);
   const champion = firstValue(match, ['champion_name', 'championName', 'champion']);
+  const championData = asRecord(champion);
+  const championName = firstValue(championData, ['name']);
+  const outcome = firstValue(match, ['outcome']);
+  const duration = firstValue(match, [
+    'game_duration_seconds',
+    'game_duration',
+    'gameDuration',
+    'duration',
+  ]);
 
   return {
-    champion: typeof champion === 'string' ? champion : 'Unknown champion',
+    champion:
+      typeof champion === 'string'
+        ? champion
+        : typeof championName === 'string'
+          ? championName
+          : 'Unknown champion',
     role: String(firstValue(match, ['role', 'team_position', 'teamPosition', 'lane']) ?? '—'),
-    result: won === null ? 'Match' : won ? 'Victory' : 'Defeat',
-    duration: formatDuration(
-      firstValue(match, ['game_duration', 'gameDuration', 'duration']),
-    ),
+    result:
+      won !== null
+        ? won
+          ? 'Victory'
+          : 'Defeat'
+        : typeof outcome === 'string'
+          ? outcome
+          : 'Match',
+    duration: formatDuration(duration),
     kda: formatKda(kills, deaths, assists),
     cs:
       metric(match, ['total_minions_killed', 'totalMinionsKilled', 'cs']) === null
@@ -141,12 +160,16 @@ async function fetchJson(
 function parseChampions(value: unknown): ProfileChampion[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => {
-    const champion = asRecord(entry);
-    const name = firstValue(champion, ['champion_name', 'championName', 'name', 'champion']);
-    if (!champion || typeof name !== 'string') return [];
-    const games = metric(champion, ['games', 'games_played', 'gamesPlayed', 'count']) ?? 0;
-    const winRate = metric(champion, ['win_rate', 'winRate', 'winrate']);
-    const kda = metric(champion, ['average_kda', 'avg_kda', 'kda']);
+    const entryData = asRecord(entry);
+    const champion = asRecord(firstValue(entryData, ['champion']));
+    const name =
+      firstValue(champion, ['name']) ??
+      firstValue(entryData, ['champion_name', 'championName', 'name']);
+    if (!entryData || typeof name !== 'string') return [];
+    const games =
+      metric(entryData, ['games', 'games_played', 'gamesPlayed', 'count']) ?? 0;
+    const winRate = metric(entryData, ['win_rate', 'winRate', 'winrate']);
+    const kda = metric(entryData, ['average_kda', 'avg_kda', 'kda']);
     return [{ name, games, winRate, kda }];
   });
 }
@@ -199,6 +222,7 @@ async function loadProfile(
     fetchJson(`${apiBaseUrl}/api/matches/${region}/${encodedPuuid}?count=5`, signal),
   ]);
   const analytics = asRecord(responseData(analyticsResponse));
+  const summary = asRecord(analytics?.summary) ?? analytics;
   const matchListValue = responseData(matchesResponse);
   const matchList = Array.isArray(matchListValue)
     ? matchListValue
@@ -224,10 +248,10 @@ async function loadProfile(
     const match = parseMatch(matchResponse);
     return match ? [match] : [];
   });
-  const wins = metric(analytics, ['wins', 'win_count', 'winCount']);
-  const losses = metric(analytics, ['losses', 'loss_count', 'lossCount']);
-  const analyticsWinRate = metric(analytics, ['win_rate', 'winRate', 'winrate']);
-  const analyticsKda = metric(analytics, ['average_kda', 'avg_kda', 'kda']);
+  const wins = metric(summary, ['wins', 'win_count', 'winCount']);
+  const losses = metric(summary, ['losses', 'loss_count', 'lossCount']);
+  const analyticsWinRate = metric(summary, ['win_rate', 'winRate', 'winrate']);
+  const analyticsKda = metric(summary, ['overall_kda', 'average_kda', 'avg_kda', 'kda']);
   const championValue = firstValue(analytics, [
     'top_champions',
     'topChampions',

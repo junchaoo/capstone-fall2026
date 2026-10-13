@@ -6,6 +6,7 @@ import httpx
 from database import Base, engine, get_db
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 import models
 from riotwatcher import ApiError, LolWatcher, RiotWatcher
 from sqlalchemy.orm import Session
@@ -133,6 +134,20 @@ app = FastAPI(
     title="League of Legends Core Analytics Backend",
     description="Analytics system focused on Normal Draft (400), Ranked Flex (440), Standard ARAM (450), and Quickplay/Swiftplay (490).",
     lifespan=lifespan,
+)
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Accept", "Content-Type"],
 )
 
 # Regional cluster routing
