@@ -1,90 +1,314 @@
 import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded';
 import KeyboardArrowDownRounded from '@mui/icons-material/KeyboardArrowDownRounded';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import './Profile.css';
 
-const recentMatches = [
-  {
-    champion: 'A',
-    name: 'Ahri',
-    role: 'MID',
-    result: 'Victory',
-    time: '28:14',
-    kda: '9 / 2 / 11',
-    cs: '218 CS',
-    lp: '+24 LP',
-    won: true,
-  },
-  {
-    champion: 'J',
-    name: 'Jinx',
-    role: 'BOT',
-    result: 'Defeat',
-    time: '34:51',
-    kda: '5 / 7 / 8',
-    cs: '264 CS',
-    lp: '-18 LP',
-    won: false,
-  },
-  {
-    champion: 'L',
-    name: 'Lee Sin',
-    role: 'JUNGLE',
-    result: 'Victory',
-    time: '26:32',
-    kda: '7 / 3 / 12',
-    cs: '191 CS',
-    lp: '+22 LP',
-    won: true,
-  },
-  {
-    champion: 'A',
-    name: 'Ahri',
-    role: 'MID',
-    result: 'Victory',
-    time: '31:06',
-    kda: '11 / 4 / 6',
-    cs: '246 CS',
-    lp: '+23 LP',
-    won: true,
-  },
-];
+type JsonRecord = Record<string, unknown>;
 
-const topChampions = [
-  {
-    initial: 'A',
-    name: 'Ahri',
-    games: '18 games',
-    winRate: '66.7%',
-    kda: '5.8 KDA',
-    color: 'rose',
-  },
-  {
-    initial: 'J',
-    name: 'Jinx',
-    games: '12 games',
-    winRate: '58.3%',
-    kda: '4.9 KDA',
-    color: 'blue',
-  },
-  {
-    initial: 'L',
-    name: 'Lee Sin',
-    games: '8 games',
-    winRate: '62.5%',
-    kda: '4.2 KDA',
-    color: 'gold',
-  },
-];
+type ProfileMatch = {
+  champion: string;
+  role: string;
+  result: string;
+  duration: string;
+  kda: string;
+  cs: string;
+  won: boolean | null;
+};
 
-const weeklyActivity = [34, 52, 42, 72, 58, 84, 64];
+type ProfileChampion = {
+  name: string;
+  games: number;
+  winRate: number | null;
+  kda: number | null;
+};
+
+type ProfileData = {
+  gameName: string;
+  tagLine: string;
+  wins: number | null;
+  losses: number | null;
+  winRate: number | null;
+  averageKda: number | null;
+  matches: ProfileMatch[];
+  champions: ProfileChampion[];
+};
+
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000')
+  .replace(/\/+$/, '');
+
+function asRecord(value: unknown): JsonRecord | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as JsonRecord)
+    : null;
+}
+
+function responseData(value: unknown): unknown {
+  const record = asRecord(value);
+  return record && 'data' in record ? record.data : value;
+}
+
+function firstValue(record: JsonRecord | null, keys: string[]): unknown {
+  if (!record) return undefined;
+  return keys.map((key) => record[key]).find((value) => value !== undefined);
+}
+
+function numericValue(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function metric(record: JsonRecord | null, keys: string[]): number | null {
+  return numericValue(firstValue(record, keys));
+}
+
+function formatPercent(value: number | null): string {
+  if (value === null) return '—';
+  return `${(value <= 1 ? value * 100 : value).toFixed(1)}%`;
+}
+
+function formatDuration(value: unknown): string {
+  const seconds = numericValue(value);
+  if (seconds === null) return '—';
+  return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+}
+
+function formatKda(kills: number | null, deaths: number | null, assists: number | null) {
+  if (kills === null && deaths === null && assists === null) return '—';
+  return `${kills ?? 0} / ${deaths ?? 0} / ${assists ?? 0}`;
+}
+
+function parseMatch(value: unknown): ProfileMatch | null {
+  const outer = asRecord(responseData(value));
+  const match = asRecord(outer?.match) ?? outer;
+  if (!match) return null;
+
+  const wonValue = firstValue(match, ['won', 'win', 'is_win', 'victory']);
+  const won =
+    typeof wonValue === 'boolean'
+      ? wonValue
+      : typeof wonValue === 'string'
+        ? wonValue.toLowerCase() === 'win' || wonValue.toLowerCase() === 'victory'
+          ? true
+          : wonValue.toLowerCase() === 'loss' || wonValue.toLowerCase() === 'defeat'
+            ? false
+            : null
+        : null;
+  const kills = metric(match, ['kills', 'kill']);
+  const deaths = metric(match, ['deaths', 'death']);
+  const assists = metric(match, ['assists', 'assist']);
+  const champion = firstValue(match, ['champion_name', 'championName', 'champion']);
+
+  return {
+    champion: typeof champion === 'string' ? champion : 'Unknown champion',
+    role: String(firstValue(match, ['role', 'team_position', 'teamPosition', 'lane']) ?? '—'),
+    result: won === null ? 'Match' : won ? 'Victory' : 'Defeat',
+    duration: formatDuration(
+      firstValue(match, ['game_duration', 'gameDuration', 'duration']),
+    ),
+    kda: formatKda(kills, deaths, assists),
+    cs:
+      metric(match, ['total_minions_killed', 'totalMinionsKilled', 'cs']) === null
+        ? '—'
+        : `${metric(match, ['total_minions_killed', 'totalMinionsKilled', 'cs'])} CS`,
+    won,
+  };
+}
+
+async function fetchJson(
+  url: string,
+  signal: AbortSignal,
+  method: 'GET' | 'POST' = 'GET',
+): Promise<unknown> {
+  const response = await fetch(url, {
+    method,
+    headers: { Accept: 'application/json' },
+    signal,
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(
+      detail || `API request failed (${response.status} ${response.statusText})`,
+    );
+  }
+  return response.status === 204 ? null : response.json();
+}
+
+function parseChampions(value: unknown): ProfileChampion[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    const champion = asRecord(entry);
+    const name = firstValue(champion, ['champion_name', 'championName', 'name', 'champion']);
+    if (!champion || typeof name !== 'string') return [];
+    const games = metric(champion, ['games', 'games_played', 'gamesPlayed', 'count']) ?? 0;
+    const winRate = metric(champion, ['win_rate', 'winRate', 'winrate']);
+    const kda = metric(champion, ['average_kda', 'avg_kda', 'kda']);
+    return [{ name, games, winRate, kda }];
+  });
+}
+
+function deriveChampions(matches: ProfileMatch[]): ProfileChampion[] {
+  const grouped = new Map<string, { games: number; wins: number; knownResults: number }>();
+  for (const match of matches) {
+    const stats = grouped.get(match.champion) ?? { games: 0, wins: 0, knownResults: 0 };
+    stats.games += 1;
+    if (match.won !== null) {
+      stats.knownResults += 1;
+      if (match.won) stats.wins += 1;
+    }
+    grouped.set(match.champion, stats);
+  }
+  return [...grouped.entries()]
+    .map(([name, stats]) => ({
+      name,
+      games: stats.games,
+      winRate: stats.knownResults ? stats.wins / stats.knownResults : null,
+      kda: null,
+    }))
+    .sort((left, right) => right.games - left.games)
+    .slice(0, 3);
+}
+
+async function loadProfile(
+  gameName: string,
+  tagLine: string,
+  signal: AbortSignal,
+): Promise<ProfileData> {
+  const region = 'na1';
+  const playerUrl = `${apiBaseUrl}/api/player/${region}/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`;
+  const playerResponse = await fetchJson(playerUrl, signal);
+  const playerData = asRecord(responseData(playerResponse));
+  const puuid = playerData?.puuid;
+  if (typeof puuid !== 'string' || !puuid) {
+    throw new Error('Player lookup response did not include data.puuid.');
+  }
+
+  const encodedPuuid = encodeURIComponent(puuid);
+  await fetchJson(
+    `${apiBaseUrl}/api/matches/${region}/${encodedPuuid}/batch-cache?count=5`,
+    signal,
+    'POST',
+  );
+
+  const [analyticsResponse, matchesResponse] = await Promise.all([
+    fetchJson(`${apiBaseUrl}/api/analytics/${encodedPuuid}`, signal),
+    fetchJson(`${apiBaseUrl}/api/matches/${region}/${encodedPuuid}?count=5`, signal),
+  ]);
+  const analytics = asRecord(responseData(analyticsResponse));
+  const matchListValue = responseData(matchesResponse);
+  const matchList = Array.isArray(matchListValue)
+    ? matchListValue
+    : (() => {
+        const record = asRecord(matchListValue);
+        const value = firstValue(record, ['matches', 'match_ids', 'matchIds', 'ids']);
+        return Array.isArray(value) ? value : [];
+      })();
+  const matchIds = matchList.flatMap((entry) => {
+    if (typeof entry === 'string') return [entry];
+    const id = firstValue(asRecord(entry), ['match_id', 'matchId', 'id']);
+    return typeof id === 'string' ? [id] : [];
+  });
+  const matchResponses = await Promise.all(
+    matchIds.map((matchId) =>
+      fetchJson(
+        `${apiBaseUrl}/api/match/${region}/${encodeURIComponent(matchId)}/${encodedPuuid}/outcome`,
+        signal,
+      ),
+    ),
+  );
+  const matches = matchResponses.flatMap((matchResponse) => {
+    const match = parseMatch(matchResponse);
+    return match ? [match] : [];
+  });
+  const wins = metric(analytics, ['wins', 'win_count', 'winCount']);
+  const losses = metric(analytics, ['losses', 'loss_count', 'lossCount']);
+  const analyticsWinRate = metric(analytics, ['win_rate', 'winRate', 'winrate']);
+  const analyticsKda = metric(analytics, ['average_kda', 'avg_kda', 'kda']);
+  const championValue = firstValue(analytics, [
+    'top_champions',
+    'topChampions',
+    'champions',
+  ]);
+  const champions = parseChampions(championValue);
+  const name = firstValue(playerData, ['gameName', 'game_name', 'name']);
+  const tag = firstValue(playerData, ['tagLine', 'tag_line', 'tag']);
+
+  return {
+    gameName: typeof name === 'string' ? name : gameName,
+    tagLine: typeof tag === 'string' ? tag : tagLine,
+    wins,
+    losses,
+    winRate:
+      analyticsWinRate ??
+      (wins !== null && losses !== null && wins + losses > 0
+        ? wins / (wins + losses)
+        : null),
+    averageKda: analyticsKda,
+    matches,
+    champions: champions.length ? champions : deriveChampions(matches),
+  };
+}
 
 function Profile() {
   const [searchParams] = useSearchParams();
   const requestedGameId = searchParams.get('gameId')?.trim();
   const isOwnProfile = !requestedGameId;
-  const searchedGameId = requestedGameId || 'Sora#NA1';
-  const [gameName = 'Sora', gameTag] = searchedGameId.split('#', 2);
+  const [requestedName, requestedTag] = (requestedGameId ?? '').split('#', 2);
+  const gameName = requestedName || '';
+  const gameTag = requestedTag || '';
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadRequestedProfile() {
+      await Promise.resolve();
+      if (!requestedGameId) {
+        setProfile(null);
+        setLoading(false);
+        setError('');
+        return;
+      }
+      if (!gameName || !gameTag) {
+        setProfile(null);
+        setLoading(false);
+        setError('Enter a Riot ID in the format Player#NA1.');
+        return;
+      }
+
+      setProfile(null);
+      setLoading(true);
+      setError('');
+      try {
+        setProfile(await loadProfile(gameName, gameTag, controller.signal));
+      } catch (reason: unknown) {
+        if (!controller.signal.aborted) {
+          setError(reason instanceof Error ? reason.message : 'Could not load this profile.');
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+    void loadRequestedProfile();
+    return () => controller.abort();
+  }, [requestedGameId, gameName, gameTag]);
+
+  const displayName = profile?.gameName ?? gameName;
+  const matches = profile?.matches ?? [];
+  const champions = profile?.champions ?? [];
+  const wins = profile?.wins ?? null;
+  const losses = profile?.losses ?? null;
+  const winRate = profile?.winRate ?? null;
+  const averageKda = profile?.averageKda ?? null;
+  const recentWins = matches.filter((match) => match.won === true).length;
+  const recentLosses = matches.filter((match) => match.won === false).length;
+  const recentResults = recentWins + recentLosses;
+  const recentWinRate = recentResults ? recentWins / recentResults : null;
 
   return (
     <div
@@ -120,12 +344,21 @@ function Profile() {
               {isOwnProfile ? 'YOUR ACCOUNT' : 'PUBLIC PLAYER PROFILE'}{' '}
               <span>·</span> SEASON 2026
             </p>
-            <h1>{isOwnProfile ? 'My profile' : `${gameName}'s profile`}</h1>
+            <h1>{isOwnProfile ? 'My profile' : `${displayName}'s profile`}</h1>
           </div>
           <button className='profile-season-select' type='button'>
             Season 2026 <KeyboardArrowDownRounded />
           </button>
         </div>
+
+        {(loading || error || isOwnProfile) && (
+          <p className={`profile-data-message ${error ? 'has-error' : ''}`} role={error ? 'alert' : 'status'}>
+            {error ||
+              (loading
+                ? 'Loading player profile and recent match data…'
+                : 'Search for a Riot ID from the home page to load a player profile.')}
+          </p>
+        )}
 
         <section
           className='summoner-card'
@@ -135,13 +368,15 @@ function Profile() {
         >
           <div className='summoner-info'>
             <div className='summoner-avatar'>
-              {gameName.charAt(0).toUpperCase()}
+              {displayName.charAt(0).toUpperCase() || '?'}
               <span />
             </div>
             <div>
               <div className='summoner-name-line'>
-                <h2>{gameName}</h2>
-                {gameTag && <span className='summoner-tag'>#{gameTag}</span>}
+                <h2>{displayName || 'No player selected'}</h2>
+                {(profile?.tagLine || gameTag) && (
+                  <span className='summoner-tag'>#{profile?.tagLine ?? gameTag}</span>
+                )}
                 <span
                   className={`profile-view-badge ${isOwnProfile ? 'owner-badge' : 'public-badge'}`}
                 >
@@ -149,20 +384,19 @@ function Profile() {
                 </span>
               </div>
               <p className='summoner-subtitle'>
-                Level 287 <i /> North America{' '}
+                North America{' '}
                 <span className='region-label'>NA</span>
               </p>
-              <p className='summoner-updated'>Last updated 4 minutes ago</p>
+              <p className='summoner-updated'>
+                {profile ? 'Profile data loaded from the API' : 'Rank details are not available'}
+              </p>
             </div>
           </div>
           <div className='summoner-rank'>
-            <div className='rank-emblem'>II</div>
             <div>
-              <span className='rank-queue'>SOLO / DUO</span>
-              <h3>Emerald II</h3>
-              <p>
-                72 LP <i /> 58% win rate
-              </p>
+              <span className='rank-queue'>RANKED STATUS</span>
+              <h3>Unavailable</h3>
+              <p>Rank data is not provided by the connected API.</p>
             </div>
           </div>
         </section>
@@ -171,32 +405,30 @@ function Profile() {
           <article>
             <span>WIN RATE</span>
             <strong>
-              58.4<small>%</small>
+              {formatPercent(winRate)}
             </strong>
-            <p className='stat-up'>
-              ↑ 4.2% <em>vs. last season</em>
-            </p>
+            <p>Based on cached match statistics</p>
           </article>
           <article>
             <span>AVERAGE KDA</span>
             <strong>
-              4.82<small className='stat-unit'> KDA</small>
+              {averageKda === null ? '—' : averageKda.toFixed(2)}
+              <small className='stat-unit'> KDA</small>
             </strong>
-            <p>3.9 / 4.6 / 8.3</p>
+            <p>Average kills / deaths / assists</p>
           </article>
           <article>
             <span>GAMES PLAYED</span>
-            <strong>142</strong>
+            <strong>{wins !== null && losses !== null ? wins + losses : '—'}</strong>
             <p>
-              81W <i>/</i> 61L
+              {wins === null ? '—' : `${wins}W`} <i>/</i>{' '}
+              {losses === null ? '—' : `${losses}L`}
             </p>
           </article>
           <article>
-            <span>CURRENT STREAK</span>
-            <strong>
-              3<small className='stat-unit'> wins</small>
-            </strong>
-            <p className='stat-up'>Keep it going</p>
+            <span>RECENT MATCHES</span>
+            <strong>{matches.length}</strong>
+            <p>{loading ? 'Loading…' : 'Most recent cached games'}</p>
           </article>
         </section>
 
@@ -210,13 +442,13 @@ function Profile() {
                   </span>
                   <h2>Ranked performance</h2>
                 </div>
-                <span className='panel-period'>Last 20 games</span>
+                <span className='panel-period'>Recent cached games</span>
               </div>
               <div className='performance-summary'>
                 <div className='win-rate-ring'>
                   <div>
                     <strong>
-                      65<small>%</small>
+                      {formatPercent(recentWinRate)}
                     </strong>
                     <span>WIN RATE</span>
                   </div>
@@ -224,30 +456,30 @@ function Profile() {
                 <div className='performance-detail'>
                   <div className='performance-record'>
                     <strong>
-                      13W <i>/</i> 7L
+                      {recentWins}W <i>/</i> {recentLosses}L
                     </strong>
-                    <span>+5 net wins</span>
+                    <span>{recentResults} results</span>
                   </div>
                   <p>
                     {isOwnProfile
-                      ? "You're winning more games than usual. Keep building on this run."
-                      : `${gameName} is winning more games than usual. Recent form is trending up.`}
+                      ? 'Recent performance will appear after searching for a Riot ID.'
+                      : `${displayName}'s recent performance from cached matches.`}
                   </p>
                   <div
                     className='weekly-activity'
-                    aria-label='Ranked activity over the last week'
+                    aria-label='Recent match results'
                   >
-                    {weeklyActivity.map((height, index) => (
+                    {matches.map((match, index) => (
                       <span
-                        key={index}
-                        className={index === 5 ? 'current-day' : ''}
-                        style={{ height: `${height}%` }}
+                        key={`${match.champion}-${index}`}
+                        className={match.won === true ? 'current-day' : ''}
+                        style={{ height: match.won === null ? '35%' : match.won ? '84%' : '48%' }}
                       />
                     ))}
                   </div>
                   <div className='activity-labels'>
-                    <span>7 days ago</span>
-                    <span>Today</span>
+                    <span>Most recent</span>
+                    <span>Oldest shown</span>
                   </div>
                 </div>
               </div>
@@ -264,33 +496,33 @@ function Profile() {
                 </a>
               </div>
               <div className='profile-match-list'>
-                {recentMatches.map((match, index) => (
+                {matches.map((match, index) => (
                   <article
-                    className={`profile-match-row ${match.won ? 'match-win' : 'match-loss'}`}
-                    key={`${match.name}-${index}`}
+                    className={`profile-match-row ${match.won === null ? '' : match.won ? 'match-win' : 'match-loss'}`}
+                    key={`${match.champion}-${index}`}
                   >
                     <div
-                      className={`profile-champion-icon champion-${match.champion.toLowerCase()}`}
+                      className='profile-champion-icon'
                     >
-                      {match.champion}
+                      {match.champion.charAt(0).toUpperCase()}
                     </div>
                     <div className='match-queue-info'>
                       <strong>{match.result}</strong>
                       <span>
-                        {match.role} <i /> {match.time}
+                        {match.role} <i /> {match.duration}
                       </span>
                     </div>
                     <div className='match-kda-info'>
                       <strong>{match.kda}</strong>
                       <span>{match.cs}</span>
                     </div>
-                    <span
-                      className={`match-lp ${match.won ? 'lp-gain' : 'lp-loss'}`}
-                    >
-                      {match.lp}
-                    </span>
                   </article>
                 ))}
+                {!matches.length && (
+                  <p className='profile-empty-state'>
+                    {loading ? 'Loading recent matches…' : 'No recent matches are available.'}
+                  </p>
+                )}
               </div>
             </section>
           </div>
@@ -307,20 +539,20 @@ function Profile() {
                 </Link>
               </div>
               <div className='top-champion-list'>
-                {topChampions.map((champion, index) => (
+                {champions.map((champion, index) => (
                   <article className='top-champion-row' key={champion.name}>
                     <span
-                      className={`profile-champion-icon champion-${champion.color}`}
+                      className='profile-champion-icon'
                     >
-                      {champion.initial}
+                      {champion.name.charAt(0).toUpperCase()}
                     </span>
                     <div className='top-champion-name'>
                       <strong>{champion.name}</strong>
-                      <span>{champion.games}</span>
+                      <span>{champion.games} games</span>
                     </div>
                     <div className='top-champion-stats'>
-                      <strong>{champion.winRate}</strong>
-                      <span>{champion.kda}</span>
+                      <strong>{formatPercent(champion.winRate)}</strong>
+                      <span>{champion.kda === null ? '—' : `${champion.kda.toFixed(1)} KDA`}</span>
                     </div>
                     <span className='champion-position'>0{index + 1}</span>
                   </article>
@@ -330,25 +562,17 @@ function Profile() {
 
             <section className='rank-climb-panel'>
               <span className='climb-eyebrow'>↗ &nbsp; RANK PROGRESS</span>
-              <h2>One step closer.</h2>
+              <h2>Rank data unavailable.</h2>
               <p>
-                {isOwnProfile ? "You're" : `${gameName} is`}{' '}
-                <strong>128 LP</strong> from Diamond. Keep the momentum.
+                The connected API does not currently return ranked tier or LP.
               </p>
-              <div className='rank-progress'>
-                <span />
-              </div>
-              <div className='rank-progress-labels'>
-                <span>Emerald II</span>
-                <span>Diamond IV</span>
-              </div>
             </section>
           </aside>
         </div>
 
         <footer className='profile-page-footer'>
           <span>
-            LEVELUP.GG <i /> SAMPLE PROFILE DATA
+            LEVELUP.GG <i /> {profile ? 'LIVE API DATA' : 'PLAYER PROFILE'}
           </span>
           <span>
             SUMMONER'S RIFT <i /> NA REGION
