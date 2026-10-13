@@ -106,7 +106,7 @@ function Profile() {
             Overview
           </a>
           <a href='#matches'>Matches</a>
-          <a href='#champions'>Champions</a>
+          <Link to='/champions'>Champions</Link>
         </nav>
         <Link className='profile-home-link' to='/'>
           <ArrowBackRounded /> Home
@@ -302,9 +302,9 @@ function Profile() {
                   <span className='panel-eyebrow'>COMFORT PICKS</span>
                   <h2>Top champions</h2>
                 </div>
-                <a className='profile-view-all' href='#champions'>
+                <Link className='profile-view-all' to='/champions'>
                   All <span>↗</span>
-                </a>
+                </Link>
               </div>
               <div className='top-champion-list'>
                 {topChampions.map((champion, index) => (

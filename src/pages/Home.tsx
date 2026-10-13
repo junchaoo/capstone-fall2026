@@ -17,6 +17,7 @@ function Home() {
           <a href='#'>Leaderboard</a>
           <a href='#'>Features</a>
           <a href='#'>Community</a>
+          <Link to='/champions'>Champions</Link>
           <Link to='/login' className='signup-button'>
             Sign In
           </Link>
@@ -41,7 +42,9 @@ function Home() {
             </p>
 
             <div className='hero-actions'>
-              <button className='primary-btn'>Find Your Profile</button>
+              <Link to='/champions' className='primary-btn'>
+                Champion Analysis
+              </Link>
               <button className='secondary-btn'>See Leaderboard</button>
             </div>
 
