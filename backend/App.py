@@ -74,15 +74,25 @@ def summarize_match(match, puuid):
     player = next(p for p in info["participants"] if p["puuid"] == puuid)
     version = get_latest_version()
 
+    items = [player.get(f"item{i}", 0) for i in range(7)]
+
     return {
         "matchId": match["metadata"]["matchId"],
         "championName": player["championName"],
         "championIconUrl": f"https://ddragon.leagueoflegends.com/cdn/{version}/img/champion/{player['championName']}.png",
+        "role": player.get("teamPosition", ""),
         "win": player["win"],
         "kills": player["kills"],
         "deaths": player["deaths"],
         "assists": player["assists"],
         "gameDuration": info["gameDuration"],
         "queueId": info["queueId"],
-        "items": [player.get(f"item{i}", 0) for i in range(7)],
+        "items": items,
+        "itemIconUrls": [
+            f"https://ddragon.leagueoflegends.com/cdn/{version}/img/item/{item_id}.png"
+            if item_id != 0 else None
+            for item_id in items
+        ],
+        "teamPosition": player["teamPosition"],
+        "visionScore": player["visionScore"],
     }

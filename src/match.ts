@@ -10,6 +10,9 @@ export interface MatchSummary
   gameDuration: number; //seconds
   queueId: number;
   items: number[];
+  itemIconUrls: (string | null)[];
+  teamPosition: 'TOP' | 'JUNGLE' | 'MIDDLE' | 'BOTTOM' | 'UTILITY' | '';
+  visionScore: number;
 }
 
 

@@ -76,6 +76,28 @@
   width: 48px;
   height: 48px;
   border-radius: 10%;
+  margin-top: 22px;
+}
+
+.match-card__role 
+{
+  position: absolute;
+  right: -10px;
+  bottom: 0px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #1b2430;
+  padding: 2px;
+}
+
+.match-card__queue
+{
+  font-size: 0.95rem;
+  font-weight: bold;
+  line-height: 1.1;
+  position: absolute;
+  color: #3d3737;
 }
 
 .match-card__info 
@@ -113,4 +135,77 @@
 {
   font-size: 0.9rem;
   color: #3d3737;
+}
+
+.match-card__build
+{
+  display: grid;
+  grid-template-columns: repeat(5, auto); 
+  grid-auto-rows: auto;
+  gap: 4px;
+  align-items: center;
+  justify-items: center;
+}
+.match-card__slot
+{
+  display: block;
+  box-sizing: border-box;
+  border-radius: 3px;
+}
+
+.match-card__slot--empty
+{
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.match-card__slot--item
+{
+  width: 30px;
+  height: 30px;
+}
+
+.match-card__slot--trinket
+{
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+}
+
+.match-card__vision
+{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  line-height: 1;
+}
+
+.match-card__vision-value
+{
+  font-size: 0.9rem;
+}
+
+.match-card__vision-label
+{
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  color: #3d3737;
+}
+
+.match-card__portrait
+{
+  position: relative;
+  flex-shrink: 0;
+}
+
+.match-card__champion-col
+{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100px;
+  flex-shrink: 0;
 }
