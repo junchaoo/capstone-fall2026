@@ -342,7 +342,12 @@ def batch_cache_matches(
             region=cluster_region, puuid=clean_puuid, count=min(count, 20)
         )
     except ApiError as err:
-        raise HTTPException(status_code=400, detail="Could not retrieve match list for batch caching.")
+        status_code = err.response.status_code if hasattr(err, "response") else 400
+        print(f"\n[RIOT API ERROR - Batch Matchlist] Status: {status_code} | Details: {err}\n")
+        raise HTTPException(
+            status_code=status_code,
+            detail=f"Riot API Error ({status_code}): Could not retrieve match list for batch caching.",
+        )
 
     cached_count = 0
     for match_id in match_ids:
