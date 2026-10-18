@@ -15,6 +15,7 @@ function Home() {
 
         <nav aria-label='Main navigation'>
           <a href='#'>Leaderboard</a>
+          <Link to='/pros'>Pros</Link>
           <a href='#'>Features</a>
           <a href='#'>Community</a>
           <Link to='/login' className='signup-button'>
