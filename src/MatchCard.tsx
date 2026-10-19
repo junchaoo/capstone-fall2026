@@ -23,6 +23,24 @@ interface MatchCardProps
     450: 'ARAM',
   };
 
+  function timeAgo(timestamp: number): string
+  {
+    const seconds = Math.floor((Date.now() - timestamp) / 1000); // Date.now returns in milliseconds
+    const units: [string, number][] =                            // convert to seconds
+    [
+      ['day', 86400],
+      ['hour', 3600],
+      ['minute', 60],
+    ];
+
+    for (const [name, size] of units)
+    {
+      const value = Math.floor(seconds / size);
+      if (value >= 1) return `${value} ${name}${value > 1 ? 's' : ''} ago`;
+    }
+    return 'Just now';
+  }
+ 
   function Slot({ url, className = '' }: { url: string | null; className?: string }) 
   {
     return url ? (
@@ -38,27 +56,50 @@ export default function MatchCard({ match }: MatchCardProps)
 
   const queueName = QUEUE_NAMES[match.queueId];
 
+  const [spell1, spell2] = match.summonerSpellIconUrls; // spell1 on D hotkey, spell2 on F hotkey
+
   const kda = match.deaths === 0 ? 'Perfect' : ((match.kills + match.assists) / match.deaths).toFixed(2);
- 
+
   const minutes = Math.floor(match.gameDuration / 60);
   const seconds = match.gameDuration % 60;
 
+  const csPerMin = (match.cs / (match.gameDuration / 60)).toFixed(1);
+
   const [item0, item1, item2, item3, item4, item5, trinket] = match.itemIconUrls; 
+  
  
   return (
     <div className={`match-card ${match.win ? 'match-card--win' : 'match-card--loss'}`}>
-
+  
+      {/* champion and role and match date*/}
       <div className="match-card__champion-col">
-        <div className="match-card__portrait">
-          <div className="match-card__champion-wrapper">
-            <img src={match.championIconUrl} alt={match.championName} className="match-card__champion" />
-          </div>
-          {roleIcon && <img src={roleIcon} alt={match.teamPosition} className="match-card__role" />}
-        </div>
         <span className="match-card__queue">{queueName}</span>
-      </div>
-      
 
+        <div className="match-card__champion-row">
+          <div className="match-card__portrait">
+            <div className="match-card__champion-wrapper">
+              <img src={match.championIconUrl} alt={match.championName} className="match-card__champion" />
+            </div>
+            {roleIcon && <img src={roleIcon} alt={match.teamPosition} className="match-card__role" />}
+          </div>
+          
+          {/* summoner spells and runes */}
+          <div className="match-card__loadout">
+            <div className="match-card__spells">
+              <Slot url={spell1} className="match-card__slot--spell" />
+              <Slot url={spell2} className="match-card__slot--spell" />
+            </div>
+            {/* for runes later */}
+            <div className="match-card__runes" />
+        
+          </div>
+        </div>
+        <span className="match-card__date">{timeAgo(match.gameEndTimestamp)}</span>
+      </div>
+    
+
+
+      {/* victory/death and match duration */}
       <div className="match-card__info">
         <span className="match-card__result">{match.win ? 'Victory' : 'Defeat'}</span>
         <span className="match-card__duration">
@@ -66,6 +107,16 @@ export default function MatchCard({ match }: MatchCardProps)
         </span>
       </div>
 
+      {/* KDA */}
+      <div className="match-card__stats">
+        <span className="match-card__kda-text">
+          {match.kills} / {match.deaths} / {match.assists}
+        </span>
+        <span className="match-card__kda-ratio">{kda} KDA</span>
+        <span className="match-card__cs"> {match.cs} CS ({csPerMin})</span>
+      </div>
+
+      {/* items + tricket and vision score */}
       <div className="match-card__build">
         <Slot url={item0} className="match-card__slot--item" />
         <Slot url={item1} className="match-card__slot--item" />
@@ -74,20 +125,12 @@ export default function MatchCard({ match }: MatchCardProps)
 
         <div className="match-card__vision" title="Vision score">
           <span className="match-card__vision-value">{match.visionScore}</span>
-          <span className="match-card__vision-label"></span>
         </div>
 
         <Slot url={item3} className="match-card__slot--item" />
         <Slot url={item4} className="match-card__slot--item" />
         <Slot url={item5} className="match-card__slot--item" />
-      </div>
-    
-      <div className="match-card__stats">
-        
-        <span className="match-card__kda-text">
-          {match.kills} / {match.deaths} / {match.assists}
-        </span>
-        <span className="match-card__kda-ratio">{kda} KDA</span>
+        <Slot url={match.questItemIconUrl} className="match-card__slot--trinket" />
       </div>
     </div>
   );

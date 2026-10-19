@@ -5,6 +5,6 @@ import './App.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <MatchHistory gameName="khun" tagLine="smh" />;
+    <MatchHistory gameName="oSilly" tagLine="NA1" />;
   </StrictMode>,
 )

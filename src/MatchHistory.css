@@ -52,6 +52,7 @@
 {
   display: flex;
   align-items: center;
+  max-height: 100px;
   gap: 1rem;
   padding: 0.75rem 1rem;
   border-left: 5px solid transparent;
@@ -73,10 +74,10 @@
 
 .match-card__champion 
 {
-  width: 48px;
-  height: 48px;
+  width: 50px;
+  height: 50px;
   border-radius: 10%;
-  margin-top: 22px;
+  margin-top: 20px;
 }
 
 .match-card__role 
@@ -93,10 +94,13 @@
 
 .match-card__queue
 {
-  font-size: 0.95rem;
+  position: relative;
+  top: 12px;
+  font-size: 0.85rem;
   font-weight: bold;
-  line-height: 1.1;
-  position: absolute;
+  line-height: 0;
+  text-align: center;
+  white-space: nowrap;
   color: #3d3737;
 }
 
@@ -106,6 +110,7 @@
   flex-direction: column;
   width: 70px;
   font-size: 1rem;
+  margin-left: 50px;
 }
 
 .match-card__result 
@@ -118,12 +123,14 @@
   color: #3d3737;
 }
 
-.match-card__stats 
+.match-card__stats
 {
   display: flex;
   flex-direction: column;
-  margin-left: auto;
-  text-align: right;
+  width: 96px;
+  flex-shrink: 0;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .match-card__kda-text 
@@ -140,12 +147,14 @@
 .match-card__build
 {
   display: grid;
-  grid-template-columns: repeat(5, auto); 
+  grid-template-columns: repeat(5, auto);
   grid-auto-rows: auto;
   gap: 4px;
   align-items: center;
   justify-items: center;
+  margin-left: auto;
 }
+
 .match-card__slot
 {
   display: block;
@@ -187,13 +196,6 @@
   font-size: 0.9rem;
 }
 
-.match-card__vision-label
-{
-  font-size: 0.55rem;
-  text-transform: uppercase;
-  color: #3d3737;
-}
-
 .match-card__portrait
 {
   position: relative;
@@ -205,7 +207,55 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  width: 100px;
+  gap: 1px;
+  width: 90px;
   flex-shrink: 0;
+}
+
+.match-card__date
+{
+  font-size: 0.9rem;
+  text-align: center;
+  color: #3d3737;
+}
+
+.match-card__champion-row
+{
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-left: 70px;
+}
+
+.match-card__loadout
+{
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.match-card__spells
+{
+  display: flex;
+  flex-direction: column;
+  margin-top: 18px;
+}
+
+.match-card__slot--spell
+{
+  width: 23px;
+  height: 23px;
+}
+
+/* empty placeholder: holds the space so nothing shifts when runes are added */
+.match-card__runes
+{
+  width: 28px;
+  flex-shrink: 0;
+}
+
+.match-card__cs
+{
+  font-size: 0.9rem;
+  color: #3d3737;
 }

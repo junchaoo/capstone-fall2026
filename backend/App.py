@@ -25,8 +25,8 @@ _ddragon_version_cache = None
 
 
 def get_latest_version():
-    """Data Dragon (Riot's static asset CDN) needs a patch version for image URLs.
-    We fetch it once and cache it rather than hitting this on every request."""
+    """Data Dragon needs patch version for image URLs.
+       fetch it once and then cache it """
     global _ddragon_version_cache
     if _ddragon_version_cache is None:
         versions = requests.get("https://ddragon.leagueoflegends.com/api/versions.json").json()
@@ -67,14 +67,33 @@ def get_matches(puuid: str, region: str = "americas", count: int = 10, queue: in
 
     return matches
 
+_spell_cache = None
+
+
+def get_spell_lookup():
+    """maps summoner spell IDs to icon URLs. fetched once, then cached."""
+    global _spell_cache
+    if _spell_cache is None:
+        version = get_latest_version()
+        spells = requests.get(
+            f"https://ddragon.leagueoflegends.com/cdn/{version}/data/en_US/summoner.json"
+        ).json()["data"]
+
+        _spell_cache = {
+            int(spell["key"]): f"https://ddragon.leagueoflegends.com/cdn/{version}/img/spell/{spell['image']['full']}"
+            for spell in spells.values()
+        }
+    return _spell_cache
 
 def summarize_match(match, puuid):
     # riot's raw match object has too much data, so return only what's needed
     info = match["info"]
     player = next(p for p in info["participants"] if p["puuid"] == puuid)
+    print({k: v for k, v in player.items() if "item" in k.lower() or "quest" in k.lower() or "role" in k.lower()})
     version = get_latest_version()
-
+    spells = get_spell_lookup()
     items = [player.get(f"item{i}", 0) for i in range(7)]
+    
 
     return {
         "matchId": match["metadata"]["matchId"],
@@ -93,6 +112,19 @@ def summarize_match(match, puuid):
             if item_id != 0 else None
             for item_id in items
         ],
+        "questItemIconUrl": (
+            f"https://ddragon.leagueoflegends.com/cdn/{version}/img/item/{player['roleBoundItem']}.png"
+            if player.get("roleBoundItem") else None
+        ),
         "teamPosition": player["teamPosition"],
         "visionScore": player["visionScore"],
+        "gameEndTimestamp": info.get("gameEndTimestamp") or info["gameStartTimestamp"],
+        "summonerSpellIconUrls": [
+            spells.get(player["summoner1Id"]),
+            spells.get(player["summoner2Id"]),
+        ],
+        "cs": player.get("totalMinionsKilled", 0) + player.get("neutralMinionsKilled", 0),
+
+        
+
     }

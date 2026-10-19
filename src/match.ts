@@ -13,6 +13,10 @@ export interface MatchSummary
   itemIconUrls: (string | null)[];
   teamPosition: 'TOP' | 'JUNGLE' | 'MIDDLE' | 'BOTTOM' | 'UTILITY' | '';
   visionScore: number;
+  gameEndTimestamp: number;
+  summonerSpellIconUrls: (string | null)[];
+  questItemIconUrl: string | null;
+  cs: number;
 }
 
 
