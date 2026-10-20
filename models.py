@@ -33,3 +33,6 @@ class MatchRecord(Base):
     cs_per_min = Column(Float, default=0.0)
     vision_score = Column(Integer, default=0)
     role_played = Column(String, default="UNKNOWN")
+    primary_style = Column(Integer, nullable=True)
+    keystone_id = Column(Integer, nullable=True)
+    sub_style = Column(Integer, nullable=True)
