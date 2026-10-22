@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
 import models
-from itr import CORE_QUEUES, get_champion_details, get_item_details, get_rune_details
+from itr import CORE_QUEUES, get_champion_details, get_item_details, get_rune_details, get_spell_details
 from riotwatcher import LolWatcher, RiotWatcher, ApiError
 import os
 from dotenv import load_dotenv
@@ -240,13 +240,25 @@ def get_match_details(region: str, match_id: str, puuid: str, db: Session = Depe
     cached_match = db.query(models.MatchRecord).filter_by(match_id=match_id, puuid=clean_puuid).first()
     if cached_match:
         raw_items = json.loads(cached_match.items_json)
-        return {"source": "database_cache", "data": {
-            "items": get_item_details(raw_items), "cs_total": cached_match.cs_total,
-            "cs_per_min": cached_match.cs_per_min, "vision_score": cached_match.vision_score,
+        # If your database record doesn't store spells yet, we can fall back to a live fetch for just this match data, 
+        # or if you want to test live fetch immediately, delete the database record / clear db.
+        try:
+            match_data = lol_watcher.match.by_id(cluster_region, match_id)
+            s_player = next((p for p in match_data["info"]["participants"] if p["puuid"] == clean_puuid), None)
+            raw_spells = [s_player.get("summoner1Id"), s_player.get("summoner2Id")] if s_player else [0, 0]
+        except Exception:
+            raw_spells = [0, 0]
+
+        return {"source": "database_cache_with_live_spells", "data": {
+            "items": get_item_details(raw_items), 
+            "spells": get_spell_details(raw_spells),
+            "cs_total": cached_match.cs_total,
+            "cs_per_min": cached_match.cs_per_min, 
+            "vision_score": cached_match.vision_score,
             "role_played": cached_match.role_played,
             "runes": get_rune_details(cached_match.primary_style, cached_match.keystone_id, cached_match.sub_style)
         }}
-    
+        
     try:
         match_data = lol_watcher.match.by_id(cluster_region, match_id)
         s_player = next((p for p in match_data["info"]["participants"] if p["puuid"] == clean_puuid), None)
@@ -254,6 +266,7 @@ def get_match_details(region: str, match_id: str, puuid: str, db: Session = Depe
             raise HTTPException(status_code=404, detail="Player not found")
         
         raw_items = [s_player[f"item{i}"] for i in range(7)]
+        raw_spells = [s_player.get("summoner1Id"), s_player.get("summoner2Id")]
         duration_mins = max(1.0, match_data["info"]["gameDuration"] / 60.0)
         total_cs = s_player.get("totalMinionsKilled", 0) + s_player.get("neutralMinionsKilled", 0)
         
@@ -264,7 +277,9 @@ def get_match_details(region: str, match_id: str, puuid: str, db: Session = Depe
         sub_style = styles[1].get("style") if len(styles) > 1 else None
 
         return {"source": "live_api_fetch", "data": {
-            "items": get_item_details(raw_items), "cs_total": total_cs,
+            "items": get_item_details(raw_items), 
+            "spells": get_spell_details(raw_spells),
+            "cs_total": total_cs,
             "cs_per_min": round(total_cs / duration_mins, 1),
             "vision_score": s_player.get("visionScore", 0),
             "role_played": s_player.get("individualPosition", "UNKNOWN"),
@@ -272,7 +287,6 @@ def get_match_details(region: str, match_id: str, puuid: str, db: Session = Depe
         }}
     except ApiError as err:
         raise HTTPException(status_code=400, detail=f"Could not fetch details: {err}")
-
 
 # --- 4. OPTIMIZED PARSED TIMELINE ENDPOINT ---
 @router.get("/api/match/{region}/{match_id}/{puuid}/timeline/parsed")

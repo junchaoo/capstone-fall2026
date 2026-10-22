@@ -55,6 +55,19 @@ async def load_datadragon_mappings():
             print(f"[DDragon] Item mapping error: {e}")
 
         try:
+            spell_res = await client.get(f"{base_url}/summoner.json")
+            SPELL_MAP = {
+                int(details["key"]): {
+                    "name": details["name"],
+                    "id": details["id"],
+                    "icon": f"{cdn_img_base}/spell/{details['image']['full']}",
+                }
+                for details in spell_res.json()["data"].values()
+            }
+        except Exception as e:
+            print(f"[DDragon] Spell mapping error: {e}")
+
+        try:
             rune_res = await client.get(f"{base_url}/runesReforged.json")
             for tree in rune_res.json():
                 RUNE_MAP[tree["id"]] = {
@@ -79,6 +92,16 @@ def get_item_details(raw_item_ids):
             item_info = ITEM_MAP.get(item_id, {"name": f"Unknown Item ({item_id})", "icon": ""})
             item_details_list.append({"id": item_id, "name": item_info["name"], "icon": item_info.get("icon", "")})
     return item_details_list
+
+def get_spell_details(raw_spell_ids):
+    spell_details_list = []
+    for spell_id in raw_spell_ids:
+        if not spell_id:
+            spell_details_list.append({"id": 0, "name": "None", "icon": ""})
+        else:
+            spell_info = SPELL_MAP.get(int(spell_id), {"name": f"Unknown Spell ({spell_id})", "icon": ""})
+            spell_details_list.append({"id": spell_id, "name": spell_info["name"], "icon": spell_info.get("icon", "")})
+    return spell_details_list
 
 def get_champion_details(champion_name: str):
     for details in CHAMPION_MAP.values():
