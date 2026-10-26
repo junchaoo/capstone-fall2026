@@ -58,7 +58,7 @@ export default function MatchCard({ match }: MatchCardProps)
 
   const [spell1, spell2] = match.summonerSpellIconUrls; // spell1 on D hotkey, spell2 on F hotkey
 
-  const kda = match.deaths === 0 ? 'Perfect' : ((match.kills + match.assists) / match.deaths).toFixed(2);
+  const KDA = match.deaths === 0 ? 'Perfect' : ((match.kills + match.assists) / match.deaths).toFixed(2);
 
   const minutes = Math.floor(match.gameDuration / 60);
   const seconds = match.gameDuration % 60;
@@ -66,6 +66,9 @@ export default function MatchCard({ match }: MatchCardProps)
   const csPerMin = (match.cs / (match.gameDuration / 60)).toFixed(1);
 
   const [item0, item1, item2, item3, item4, item5, trinket] = match.itemIconUrls; 
+
+  // KP = kill participation
+  const KP = match.teamKills > 0 ? Math.round(((match.kills + match.assists) / match.teamKills) * 100) : 0;
   
  
   return (
@@ -80,8 +83,10 @@ export default function MatchCard({ match }: MatchCardProps)
             <div className="match-card__champion-wrapper">
               <img src={match.championIconUrl} alt={match.championName} className="match-card__champion" />
             </div>
+            <span className="match-card__level">{match.champLevel}</span>
             {roleIcon && <img src={roleIcon} alt={match.teamPosition} className="match-card__role" />}
           </div>
+          
           
           {/* summoner spells and runes */}
           <div className="match-card__loadout">
@@ -89,16 +94,15 @@ export default function MatchCard({ match }: MatchCardProps)
               <Slot url={spell1} className="match-card__slot--spell" />
               <Slot url={spell2} className="match-card__slot--spell" />
             </div>
-            {/* for runes later */}
-            <div className="match-card__runes" />
-        
+            <div className="match-card__runes">
+              <Slot url={match.keystoneIconUrl} className="match-card__slot--rune match-card__slot--keystone" />
+              <Slot url={match.secondaryTreeIconUrl} className="match-card__slot--rune match-card__slot--secondary" />
+            </div>
           </div>
         </div>
         <span className="match-card__date">{timeAgo(match.gameEndTimestamp)}</span>
       </div>
     
-
-
       {/* victory/death and match duration */}
       <div className="match-card__info">
         <span className="match-card__result">{match.win ? 'Victory' : 'Defeat'}</span>
@@ -107,13 +111,14 @@ export default function MatchCard({ match }: MatchCardProps)
         </span>
       </div>
 
-      {/* KDA */}
+      {/* KDA, KDA ratio, CS, kill participation*/}
       <div className="match-card__stats">
         <span className="match-card__kda-text">
           {match.kills} / {match.deaths} / {match.assists}
         </span>
-        <span className="match-card__kda-ratio">{kda} KDA</span>
-        <span className="match-card__cs"> {match.cs} CS ({csPerMin})</span>
+        <span className="match-card__kda-ratio">{KDA} KDA</span>
+        <span className="match-card__cs"> {match.cs} CS ({csPerMin}) </span>
+        <span className="match-card__kp">{KP}% KP</span>
       </div>
 
       {/* items + tricket and vision score */}
@@ -131,6 +136,16 @@ export default function MatchCard({ match }: MatchCardProps)
         <Slot url={item4} className="match-card__slot--item" />
         <Slot url={item5} className="match-card__slot--item" />
         <Slot url={match.questItemIconUrl} className="match-card__slot--trinket" />
+      </div>
+
+      {/* players in the match */}
+      <div className="match-card__players">
+        {match.players.map((p) => (
+          <div key={p.puuid} className={`match-card__player ${p.isMe ? 'match-card__player--me' : ''}`}>
+            <img src={p.championIconUrl} alt={p.championName} className="match-card__player-icon" />
+            <span className="match-card__player-name" title={`${p.name}#${p.tagLine}`}>{p.name}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

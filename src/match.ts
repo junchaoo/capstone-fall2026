@@ -17,6 +17,22 @@ export interface MatchSummary
   summonerSpellIconUrls: (string | null)[];
   questItemIconUrl: string | null;
   cs: number;
+  keystoneIconUrl: string | null;
+  secondaryTreeIconUrl: string | null;
+  champLevel: number;
+  players: MatchPlayer[];
+  teamKills: number;
+}
+
+export interface MatchPlayer 
+{
+  puuid: string;
+  name: string;
+  tagLine: string;
+  championName: string;
+  championIconUrl: string;
+  teamId: number;
+  isMe: boolean;
 }
 
 

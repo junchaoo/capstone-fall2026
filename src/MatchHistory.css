@@ -1,8 +1,9 @@
 .match-history 
 {
-  max-width: 640px;
+  max-width: 710px;
   margin: 0 auto;
   overflow-y: hidden;
+  overflow-x: hidden;
 }
 
 .match-history__header 
@@ -53,7 +54,6 @@
   display: flex;
   align-items: center;
   max-height: 100px;
-  gap: 1rem;
   padding: 0.75rem 1rem;
   border-left: 5px solid transparent;
   border-radius: 4px;
@@ -69,14 +69,14 @@
 .match-card--loss 
 {
   border-left-color: #f73939;
-  background: #fdeeee;
+  background: #fdd2d2;
 }
 
 .match-card__champion 
 {
   width: 50px;
   height: 50px;
-  border-radius: 10%;
+  border-radius: 5%;
   margin-top: 20px;
 }
 
@@ -90,6 +90,23 @@
   border-radius: 50%;
   background: #1b2430;
   padding: 2px;
+}
+
+.match-card__level
+{
+  position: absolute;
+  left: -7px;
+  bottom: 0px;
+  min-width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  border-radius: 9px;
+  background: #1b2430;
+  color: #e9e7e7;
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .match-card__queue
@@ -108,9 +125,9 @@
 {
   display: flex;
   flex-direction: column;
-  width: 70px;
+  width: 65px;
   font-size: 1rem;
-  margin-left: 50px;
+  margin-left: 80px;
 }
 
 .match-card__result 
@@ -121,16 +138,18 @@
 .match-card__duration 
 {
   color: #3d3737;
+  width: 100px;
 }
 
 .match-card__stats
 {
   display: flex;
   flex-direction: column;
-  width: 96px;
+  width: 100px;
   flex-shrink: 0;
   text-align: center;
   white-space: nowrap;
+  margin-right: 10px;
 }
 
 .match-card__kda-text 
@@ -138,62 +157,10 @@
   font-weight: bold;
 }
 
-.match-card__kda-ratio 
+.match-card__kp
 {
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   color: #3d3737;
-}
-
-.match-card__build
-{
-  display: grid;
-  grid-template-columns: repeat(5, auto);
-  grid-auto-rows: auto;
-  gap: 4px;
-  align-items: center;
-  justify-items: center;
-  margin-left: auto;
-}
-
-.match-card__slot
-{
-  display: block;
-  box-sizing: border-box;
-  border-radius: 3px;
-}
-
-.match-card__slot--empty
-{
-  background: rgba(0, 0, 0, 0.3);
-}
-
-.match-card__slot--item
-{
-  width: 30px;
-  height: 30px;
-}
-
-.match-card__slot--trinket
-{
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-}
-
-.match-card__vision
-{
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  line-height: 1;
-}
-
-.match-card__vision-value
-{
-  font-size: 0.9rem;
 }
 
 .match-card__portrait
@@ -230,7 +197,6 @@
 .match-card__loadout
 {
   display: flex;
-  align-items: center;
   gap: 4px;
 }
 
@@ -239,23 +205,144 @@
   display: flex;
   flex-direction: column;
   margin-top: 18px;
+  gap: 2px;
 }
 
 .match-card__slot--spell
 {
-  width: 23px;
-  height: 23px;
+  width: 25px;
+  height: 25px;
 }
 
-/* empty placeholder: holds the space so nothing shifts when runes are added */
 .match-card__runes
 {
-  width: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 21px;
   flex-shrink: 0;
+  margin-top: 20px;
+}
+
+.match-card__slot--rune
+{
+  border-radius: 50%;
+  background: #1b2430;
+  box-sizing: border-box;
+}
+
+.match-card__slot--keystone
+{
+  width: 22px;
+  height: 22px;
+
+}
+
+.match-card__slot--secondary
+{
+  width: 22px;
+  height: 22px;
+  padding: 2px;
 }
 
 .match-card__cs
 {
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   color: #3d3737;
+}
+
+.match-card__build
+{
+  display: grid;
+  grid-template-columns: repeat(5, auto);
+  grid-auto-rows: auto;
+  gap: 4px;
+  align-items: center;
+  justify-items: center;
+}
+
+.match-card__slot
+{
+  display: block;
+  box-sizing: border-box;
+  border: 0.5px #1b2430;
+  border-style: solid;
+  border-radius: 3px;
+}
+
+.match-card__slot--empty
+{
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.match-card__slot--item
+{
+  width: 30px;
+  height: 30px;
+}
+
+.match-card__slot--trinket
+{
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+}
+
+.match-card__vision
+{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  line-height: 1;
+}
+
+.match-card__vision-value
+{
+  font-size: 0.9rem;
+  margin-right: 15px
+}
+
+.match-card__players
+{
+  display: grid;
+  grid-auto-flow: column;     
+  grid-template-rows: repeat(5, 18px);
+  grid-template-columns: repeat(2, 90px);
+  gap: 0.5px 5px;
+  margin-left: 5px;
+}
+
+.match-card__player
+{
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: #3d3737;
+  overflow-x: hidden;
+}
+
+.match-card__player--me
+{
+  font-weight: bold;
+  color: #1b2430;
+}
+
+.match-card__player-icon
+{
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.match-card__player-name
+{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
