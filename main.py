@@ -17,7 +17,6 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Register the router
 app.include_router(router)
 
 @app.get("/")

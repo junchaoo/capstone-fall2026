@@ -5,7 +5,6 @@ from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String
 class Player(Base):
     __tablename__ = "players"
 
-    # Use PUUID as primary key since Riot IDs can change (PUUID remains permanent)
     puuid = Column(String, primary_key=True, index=True)
     game_name = Column(String, index=True)
     tag_line = Column(String)

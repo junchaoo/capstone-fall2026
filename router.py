@@ -113,7 +113,6 @@ async def get_player_rank_by_riot_id(region: str, game_name: str, tag_line: str)
         raise HTTPException(status_code=400, detail=f"Could not retrieve rank: {err}")
 
 
-# --- 2. MATCH LISTINGS & 200+ BATCH CACHING ENDPOINTS ---
 @router.get("/api/matches/{region}/{puuid}")
 def get_player_matches(region: str, puuid: str, count: int = 20, start: int = 0, queue: int | None = None):
     clean_puuid = puuid.strip()
@@ -200,7 +199,6 @@ def batch_cache_matches(region: str, puuid: str, count: int = 200, queue: int | 
     return {"status": "success", "total_matches_scanned": len(match_ids), "newly_cached_matches": cached_count}
 
 
-# --- 3. SUMMARY & DETAILS ENDPOINTS ---
 @router.get("/api/match/{region}/{match_id}/{puuid}/summary")
 def get_match_summary(region: str, match_id: str, puuid: str, db: Session = Depends(get_db)):
     clean_puuid = puuid.strip()
@@ -240,8 +238,6 @@ def get_match_details(region: str, match_id: str, puuid: str, db: Session = Depe
     cached_match = db.query(models.MatchRecord).filter_by(match_id=match_id, puuid=clean_puuid).first()
     if cached_match:
         raw_items = json.loads(cached_match.items_json)
-        # If your database record doesn't store spells yet, we can fall back to a live fetch for just this match data, 
-        # or if you want to test live fetch immediately, delete the database record / clear db.
         try:
             match_data = lol_watcher.match.by_id(cluster_region, match_id)
             s_player = next((p for p in match_data["info"]["participants"] if p["puuid"] == clean_puuid), None)
@@ -288,7 +284,6 @@ def get_match_details(region: str, match_id: str, puuid: str, db: Session = Depe
     except ApiError as err:
         raise HTTPException(status_code=400, detail=f"Could not fetch details: {err}")
 
-# --- 4. OPTIMIZED PARSED TIMELINE ENDPOINT ---
 @router.get("/api/match/{region}/{match_id}/{puuid}/timeline/parsed")
 async def get_parsed_match_timeline(
     region: str, 

@@ -17,7 +17,6 @@ CORE_QUEUES = {
 async def load_datadragon_mappings():
     global DDRAGON_VERSION, CHAMPION_MAP, ITEM_MAP, SPELL_MAP, RUNE_MAP, PERK_MAP
 
-    # Added a safety timeout so startup never hangs indefinitely if the CDN lags
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             versions_res = await client.get("https://ddragon.leagueoflegends.com/api/versions.json")
