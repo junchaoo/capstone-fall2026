@@ -14,7 +14,7 @@ function Home() {
         </div>
 
         <nav aria-label='Main navigation'>
-          <a href='#'>Leaderboard</a>
+          <Link to='/comparison'>Player Comparison</Link>
           <a href='#'>Features</a>
           <a href='#'>Community</a>
           <Link to='/champions'>Champions</Link>
@@ -45,7 +45,9 @@ function Home() {
               <Link to='/champions' className='primary-btn'>
                 Champion Analysis
               </Link>
-              <button className='secondary-btn'>See Leaderboard</button>
+              <Link to='/comparison' className='secondary-btn'>
+                Compare Players
+              </Link>
             </div>
 
             <form
@@ -123,10 +125,10 @@ function Home() {
           <div className='feature-container'>
             <div className='feature-card'>
               <div className='feature-number'>01</div>
-              <h3>Leaderboard</h3>
+              <h3>Player Comparison</h3>
               <p>
-                See where you stand and compare your rank with other players in
-                a live competitive snapshot.
+                Compare win rate, KDA, and match results side by side with
+                another player.
               </p>
             </div>
 
