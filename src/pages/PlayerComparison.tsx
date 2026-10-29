@@ -1,7 +1,8 @@
 import ArrowBackRounded from '@mui/icons-material/ArrowBackRounded';
 import CompareArrowsRounded from '@mui/icons-material/CompareArrowsRounded';
-import { useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import SwapHorizRounded from '@mui/icons-material/SwapHorizRounded';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import './PlayerComparison.css';
 
 type JsonRecord = Record<string, unknown>;
@@ -19,6 +20,9 @@ type ComparedPlayer = {
   losses: number;
   winRate: number | null;
   kda: number | null;
+  avgKills: number | null;
+  avgDeaths: number | null;
+  avgAssists: number | null;
   champions: ComparedChampion[];
 };
 
@@ -125,6 +129,7 @@ async function loadComparedPlayer(riotId: string, signal: AbortSignal): Promise<
       }];
     })
     : [];
+  const averages = asRecord(summary?.averages);
   const resolvedGameName = player?.gameName;
   const resolvedTagLine = player?.tagLine;
 
@@ -134,6 +139,9 @@ async function loadComparedPlayer(riotId: string, signal: AbortSignal): Promise<
     losses,
     winRate,
     kda: metric(summary, ['overall_kda', 'average_kda', 'avg_kda', 'kda']),
+    avgKills: metric(averages, ['kills']),
+    avgDeaths: metric(averages, ['deaths']),
+    avgAssists: metric(averages, ['assists']),
     champions,
   };
 }
@@ -147,6 +155,16 @@ function formatKda(value: number | null): string {
   return value === null ? '—' : `${value.toFixed(2)} KDA`;
 }
 
+function formatAverageKda(player: ComparedPlayer): string {
+  if (player.avgKills === null || player.avgDeaths === null || player.avgAssists === null) return '—';
+  return `${player.avgKills.toFixed(1)} / ${player.avgDeaths.toFixed(1)} / ${player.avgAssists.toFixed(1)}`;
+}
+
+function percentValue(value: number | null): number {
+  if (value === null) return 0;
+  return Math.max(0, Math.min(100, value <= 1 ? value * 100 : value));
+}
+
 function compareMetric(left: number | null, right: number | null, higherIsBetter = true) {
   if (left === null || right === null || left === right) return 'Even';
   const leftWins = higherIsBetter ? left > right : left < right;
@@ -154,20 +172,22 @@ function compareMetric(left: number | null, right: number | null, higherIsBetter
 }
 
 function PlayerComparison() {
-  const [riotIdOne, setRiotIdOne] = useState('');
-  const [riotIdTwo, setRiotIdTwo] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [riotIdOne, setRiotIdOne] = useState(searchParams.get('p1') ?? '');
+  const [riotIdTwo, setRiotIdTwo] = useState(searchParams.get('p2') ?? '');
   const [players, setPlayers] = useState<[ComparedPlayer | null, ComparedPlayer | null]>([null, null]);
   const [errors, setErrors] = useState<[string, string]>(['', '']);
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const requestId = useRef(0);
 
-  async function handleCompare(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function runComparison(idOne: string, idTwo: string) {
+    const currentRequest = ++requestId.current;
     setLoading(true);
     setPlayers([null, null]);
     setErrors(['', '']);
 
-    const riotIds = [riotIdOne.trim(), riotIdTwo.trim()] as const;
-    const results = await Promise.all(riotIds.map(async (riotId) => {
+    const results = await Promise.all([idOne, idTwo].map(async (riotId) => {
       try {
         return { player: await loadComparedPlayer(riotId, new AbortController().signal), error: '' };
       } catch (error) {
@@ -178,12 +198,74 @@ function PlayerComparison() {
       }
     }));
 
+    if (currentRequest !== requestId.current) return;
     setPlayers([results[0].player, results[1].player]);
     setErrors([results[0].error, results[1].error]);
     setLoading(false);
   }
 
+  function startComparison(idOne: string, idTwo: string) {
+    setSearchParams({ p1: idOne, p2: idTwo });
+    void runComparison(idOne, idTwo);
+  }
+
+  useEffect(() => {
+    const idOne = searchParams.get('p1')?.trim();
+    const idTwo = searchParams.get('p2')?.trim();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (idOne && idTwo) void runComparison(idOne, idTwo);
+    // Only auto-run for the URL the page was opened with.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function handleCompare(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    startComparison(riotIdOne.trim(), riotIdTwo.trim());
+  }
+
+  function handleSwap() {
+    setRiotIdOne(riotIdTwo);
+    setRiotIdTwo(riotIdOne);
+    if (riotIdOne.trim() && riotIdTwo.trim()) startComparison(riotIdTwo.trim(), riotIdOne.trim());
+  }
+
+  async function handleCopyLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
   const [playerOne, playerTwo] = players;
+  const bothLoaded = playerOne && playerTwo;
+
+  let summaryText = '';
+  if (playerOne && playerTwo) {
+    let oneScore = 0;
+    let twoScore = 0;
+    for (const [a, b, higherIsBetter] of [
+      [playerOne.winRate, playerTwo.winRate, true],
+      [playerOne.kda, playerTwo.kda, true],
+      [playerOne.avgDeaths, playerTwo.avgDeaths, false],
+    ] as const) {
+      if (a === null || b === null || a === b) continue;
+      if ((a > b) === higherIsBetter) oneScore++;
+      else twoScore++;
+    }
+    summaryText = oneScore === twoScore
+      ? 'Too close to call — these players are evenly matched.'
+      : `${oneScore > twoScore ? playerOne.riotId : playerTwo.riotId} has the overall advantage (${Math.max(oneScore, twoScore)} of 3 key metrics: win rate, KDA, deaths).`;
+  }
+
+  const commonChampions = playerOne && playerTwo
+    ? playerOne.champions.flatMap((champion) => {
+      const other = playerTwo.champions.find((entry) => entry.name === champion.name);
+      return other ? [{ champion, other }] : [];
+    })
+    : [];
 
   return (
     <div className='leaderboard-page'>
@@ -236,6 +318,15 @@ function PlayerComparison() {
             />
             {errors[1] && <small role='alert'>{errors[1]}</small>}
           </label>
+          <button
+            className='comparison-swap'
+            type='button'
+            onClick={handleSwap}
+            aria-label='Swap players'
+            title='Swap players'
+          >
+            <SwapHorizRounded />
+          </button>
           <button className='comparison-submit' type='submit' disabled={loading}>
             {loading ? 'Loading players…' : 'Compare players'}
           </button>
@@ -243,6 +334,39 @@ function PlayerComparison() {
 
         {players.some(Boolean) && (
           <section className='comparison-results' aria-label='Player comparison results'>
+            {bothLoaded && (
+              <div className='comparison-summary'>
+                <strong>{summaryText}</strong>
+                <button type='button' onClick={handleCopyLink}>
+                  {copied ? 'Link copied!' : 'Copy share link'}
+                </button>
+              </div>
+            )}
+
+            {bothLoaded && (
+              <div className='comparison-winrate' aria-label='Win rate comparison'>
+                <span className='comparison-section-label'>WIN RATE</span>
+                {[playerOne, playerTwo].map((player, index) => (
+                  <div className='comparison-bar-row' key={`bar-${index}`}>
+                    <span>{player.riotId}</span>
+                    <div
+                      className='comparison-bar-track'
+                      role='progressbar'
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.round(percentValue(player.winRate))}
+                    >
+                      <div
+                        className={`comparison-bar-fill player-${index + 1}`}
+                        style={{ width: `${percentValue(player.winRate)}%` }}
+                      />
+                    </div>
+                    <strong>{formatPercent(player.winRate)}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className='comparison-table'>
               <div className='comparison-table-heading'>
                 <span>PERFORMANCE</span>
@@ -261,6 +385,12 @@ function PlayerComparison() {
                   left: playerOne ? formatKda(playerOne.kda) : '—',
                   right: playerTwo ? formatKda(playerTwo.kda) : '—',
                   outcome: playerOne && playerTwo ? compareMetric(playerOne.kda, playerTwo.kda) : '',
+                },
+                {
+                  label: 'Avg K / D / A',
+                  left: playerOne ? formatAverageKda(playerOne) : '—',
+                  right: playerTwo ? formatAverageKda(playerTwo) : '—',
+                  outcome: playerOne && playerTwo ? compareMetric(playerOne.avgDeaths, playerTwo.avgDeaths, false) : '',
                 },
                 {
                   label: 'Games played',
@@ -293,7 +423,7 @@ function PlayerComparison() {
                     player.champions.length ? (
                       <ol>
                         {player.champions.slice(0, 3).map((champion) => (
-                          <li key={champion.name}>
+                          <li key={champion.name} className={playerOne && playerTwo && commonChampions.some((common) => common.champion.name === champion.name) ? 'common' : undefined}>
                             {champion.icon ? <img src={champion.icon} alt='' loading='lazy' /> : <span className='comparison-champion-fallback'>{champion.name.slice(0, 1)}</span>}
                             <span>{champion.name}</span>
                             <small>{champion.games} games · {formatPercent(champion.winRate)}</small>
@@ -309,6 +439,25 @@ function PlayerComparison() {
                 </article>
               ))}
             </div>
+            {bothLoaded && (
+              <div className='comparison-common'>
+                <span className='comparison-section-label'>COMMON CHAMPIONS</span>
+                {commonChampions.length ? (
+                  <ul>
+                    {commonChampions.map(({ champion, other }) => (
+                      <li key={champion.name}>
+                        {champion.icon ? <img src={champion.icon} alt='' loading='lazy' /> : <span className='comparison-champion-fallback'>{champion.name.slice(0, 1)}</span>}
+                        <strong>{champion.name}</strong>
+                        <span>{playerOne.riotId}: {champion.games} games · {formatPercent(champion.winRate)}</span>
+                        <span>{playerTwo.riotId}: {other.games} games · {formatPercent(other.winRate)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>These players have no top champions in common.</p>
+                )}
+              </div>
+            )}
             <p className='comparison-disclaimer'>
               Stats are calculated from games currently cached by the connected API.
             </p>
