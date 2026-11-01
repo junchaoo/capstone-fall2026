@@ -12,32 +12,28 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
-
 from database import Base, engine, get_db
 from models import User
 from auth import hash_password, verify_password, create_access_token
+from pros import router as pros_router
 
 # Creates the SQLite file + users table on first run, if they don't exist yet
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-# --------------------------------------------------------------
-# CORS — lets your React app (running on a different port) call this API
-# --------------------------------------------------------------
+app.include_router(pros_router)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # your Vite dev server address
+    allow_origins=["http://localhost:5173"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# --------------------------------------------------------------
-# Request/response "shapes" (Pydantic models)
-# These define what JSON data each endpoint expects/returns.
-# --------------------------------------------------------------
+
 class SignupRequest(BaseModel):
     email: EmailStr
     password: str
@@ -53,9 +49,6 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
-# --------------------------------------------------------------
-# Routes
-# --------------------------------------------------------------
 @app.post("/signup", response_model=TokenResponse)
 def signup(payload: SignupRequest, db: Session = Depends(get_db)):
     # Check if the email is already registered
