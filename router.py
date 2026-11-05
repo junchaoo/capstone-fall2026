@@ -133,7 +133,7 @@ def batch_cache_matches(region: str, puuid: str, count: int = 200, queue: int | 
     clean_puuid = puuid.strip()
     cluster_region = CLUSTER_MAPPING.get(region.strip().lower(), "americas")
     
-    target_count = min(max(count, 1), 250)
+    target_count = min(max(count, 1), 500)
     match_ids = []
     start = 0
     chunk_size = 100
@@ -159,16 +159,19 @@ def batch_cache_matches(region: str, puuid: str, count: int = 200, queue: int | 
 
     cached_count = 0
     for match_id in match_ids:
-        if db.query(models.MatchRecord).filter_by(match_id=match_id, puuid=clean_puuid).first():
+        # Check if match is already fully cached in DB
+        if db.query(models.MatchRecord).filter_by(match_id=match_id).first():
             continue
         try:
             match_data = lol_watcher.match.by_id(cluster_region, match_id)
             info = match_data["info"]
-            s_player = next((p for p in info["participants"] if p["puuid"] == clean_puuid), None)
-            if s_player:
+            
+            # STORE ALL 10 PARTICIPANTS FOR UNIVERSAL GLOBAL ANALYTICS
+            for s_player in info.get("participants", []):
+                p_puuid = s_player.get("puuid", "UNKNOWN")
                 is_win = s_player["win"]
                 kills, deaths, assists = s_player["kills"], s_player["deaths"], s_player["assists"]
-                raw_items = [s_player[f"item{i}"] for i in range(7)]
+                raw_items = [s_player.get(f"item{i}", 0) for i in range(7)]
                 duration_mins = max(1.0, info["gameDuration"] / 60.0)
                 total_cs = s_player.get("totalMinionsKilled", 0) + s_player.get("neutralMinionsKilled", 0)
                 
@@ -179,7 +182,7 @@ def batch_cache_matches(region: str, puuid: str, count: int = 200, queue: int | 
                 sub_style = styles[1].get("style") if len(styles) > 1 else None
 
                 new_match = models.MatchRecord(
-                    match_id=match_id, puuid=clean_puuid, queue_id=info.get("queueId"),
+                    match_id=match_id, puuid=p_puuid, queue_id=info.get("queueId"),
                     champion_name=s_player["championName"], outcome="Victory" if is_win else "Defeat",
                     win=is_win, kills=kills, deaths=deaths, assists=assists,
                     kda_ratio=round((kills + assists) / max(1, deaths), 2),
@@ -190,9 +193,9 @@ def batch_cache_matches(region: str, puuid: str, count: int = 200, queue: int | 
                     primary_style=primary_style, keystone_id=keystone_id, sub_style=sub_style
                 )
                 db.add(new_match)
-                db.commit()
-                cached_count += 1
             
+            db.commit()
+            cached_count += 1
             time.sleep(0.05)
         except Exception:
             continue
@@ -210,14 +213,12 @@ def get_all_participants_timeline_summary(
     cluster_region = CLUSTER_MAPPING.get(region.strip().lower(), "americas")
     
     try:
-        # 1. Fetch match details via lol_watcher
         match_data = lol_watcher.match.by_id(cluster_region, match_id)
         participants_raw = match_data.get("info", {}).get("participants", [])
         
         if not participants_raw:
             raise HTTPException(status_code=404, detail="Match details found, but participant list is empty")
 
-        # Map all 10 participants directly from match data
         participant_map = {}
         for p in participants_raw:
             p_id = p["participantId"]
@@ -234,7 +235,6 @@ def get_all_participants_timeline_summary(
                 "role": p.get("individualPosition", "UNKNOWN")
             }
 
-        # 2. Fetch match timeline via lol_watcher
         timeline_data = lol_watcher.match.timeline_by_match(cluster_region, match_id)
 
     except HTTPException as he:
@@ -244,7 +244,6 @@ def get_all_participants_timeline_summary(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-    # 3. Bucket timeline events for all 10 players
     SKILL_SLOT_MAP = {1: "Q", 2: "W", 3: "E", 4: "R"}
     players_timeline = {p_id: {"item_events": [], "skill_events": []} for p_id in participant_map}
 
@@ -260,7 +259,6 @@ def get_all_participants_timeline_summary(
             if p_id in players_timeline:
                 event_type = event.get("type")
                 
-                # Filter item events
                 if event_type in ["ITEM_PURCHASED", "ITEM_SOLD", "ITEM_UNDO"]:
                     item_id = event.get("itemId")
                     item_info = get_item_details([item_id])[0] if item_id else {"id": 0, "name": "Empty", "icon": ""}
@@ -270,7 +268,6 @@ def get_all_participants_timeline_summary(
                         "item": item_info
                     })
                 
-                # Filter skill level-up events
                 elif event_type == "SKILL_LEVEL_UP":
                     raw_slot = event.get("skillSlot")
                     players_timeline[p_id]["skill_events"].append({
@@ -280,7 +277,6 @@ def get_all_participants_timeline_summary(
                         "level_up_type": event.get("levelUpType")
                     })
 
-    # 4. Return complete 10-player structured summary
     timeline_summary = []
     for p_id, p_info in participant_map.items():
         timeline_summary.append({
@@ -292,90 +288,6 @@ def get_all_participants_timeline_summary(
         "match_id": match_id,
         "time_range": {"start_minute": start_minute, "end_minute": end_minute},
         "participants_timeline": timeline_summary
-    }
-
-
-@router.get("/api/match/{region}/{match_id}/{puuid}/timeline/parsed")
-async def get_parsed_match_timeline(
-    region: str, 
-    match_id: str, 
-    puuid: str, 
-    start_minute: float = 0.0, 
-    end_minute: float = 60.0
-):
-    clean_puuid = puuid.strip()
-    cluster_region = CLUSTER_MAPPING.get(region.strip().lower(), "americas")
-    
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        match_res = await client.get(
-            f"https://{cluster_region}.api.riotgames.com/lol/match/v5/matches/{match_id}",
-            headers={"X-Riot-Token": RIOT_API_KEY}
-        )
-        if match_res.status_code != 200:
-            raise HTTPException(
-                status_code=match_res.status_code, 
-                detail=f"Riot API Error ({match_res.status_code}): {match_res.text}"
-            )
-        
-        participants = match_res.json()["info"]["participants"]
-        player = next((p for p in participants if p["puuid"] == clean_puuid), None)
-        if not player:
-            raise HTTPException(status_code=404, detail="Player PUUID not found in this match's participants list.")
-            
-        participant_id = player["participantId"]
-
-        timeline_res = await client.get(
-            f"https://{cluster_region}.api.riotgames.com/lol/match/v5/matches/{match_id}/timeline",
-            headers={"X-Riot-Token": RIOT_API_KEY}
-        )
-        if timeline_res.status_code != 200:
-            raise HTTPException(
-                status_code=timeline_res.status_code, 
-                detail=f"Riot Timeline API Error ({timeline_res.status_code}): {timeline_res.text}"
-            )
-            
-        timeline_json = timeline_res.json()
-
-    item_purchases = []
-    skill_level_ups = []
-    
-    frames = timeline_json.get("info", {}).get("frames", [])
-    for frame in frames:
-        timestamp_min = round(frame.get("timestamp", 0) / 60000.0, 1)
-        
-        if timestamp_min < start_minute or timestamp_min > end_minute:
-            continue
-            
-        events = frame.get("events", [])
-        for event in events:
-            if event.get("participantId") == participant_id:
-                event_type = event.get("type")
-                
-                if event_type in ["ITEM_PURCHASED", "ITEM_SOLD", "ITEM_UNDO"]:
-                    item_id = event.get("itemId")
-                    item_info = get_item_details([item_id])[0] if item_id else {"id": 0, "name": "Empty", "icon": ""}
-                    item_purchases.append({
-                        "timestamp_minute": timestamp_min,
-                        "action": event_type,
-                        "item": item_info
-                    })
-                    
-                elif event_type == "SKILL_LEVEL_UP":
-                    skill_level_ups.append({
-                        "timestamp_minute": timestamp_min,
-                        "skill_slot": event.get("skillSlot"),
-                        "level_up_type": event.get("levelUpType")
-                    })
-
-    return {
-        "match_id": match_id,
-        "puuid": clean_puuid,
-        "participant_id": participant_id,
-        "time_range": {"start_minute": start_minute, "end_minute": end_minute},
-        "timeline_summary": {
-            "item_history": item_purchases,
-            "skill_progression": skill_level_ups
-        }
     }
 
 
@@ -428,7 +340,7 @@ def get_player_premade_stats(region: str, game_name: str, tag_line: str, count: 
 
         frequent_duos = []
         for mate_puuid, data in teammate_tracker.items():
-            if data["games_together"] >= 2:  # Threshold for premade detection
+            if data["games_together"] >= 2: 
                 win_rate = round((data["wins"] / data["games_together"]) * 100, 1)
                 most_common_champ = data["champions_played"].most_common(1)[0][0] if data["champions_played"] else "Unknown"
                 
@@ -455,50 +367,49 @@ def get_player_premade_stats(region: str, game_name: str, tag_line: str, count: 
         raise HTTPException(status_code=400, detail=f"Riot API Error: {err}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-    
+
+
 @router.get("/api/recommendations/items")
-def get_item_recommendations(champion_name: str, role: str, region: str = "americas", count: int = 50):
-    cluster_region = CLUSTER_MAPPING.get(region.strip().lower(), "americas")
-    
+def get_item_recommendations(
+    champion_name: str, 
+    role: str, 
+    db: Session = Depends(get_db)
+):
     starter_counter = Counter()
     core_counter = Counter()
     late_counter = Counter()
-    total_winning_games = 0
 
     try:
-        # Use a broader sample size by scanning more matches
-        seed_puuid = "vzGu0XMkUPwSkc1f4Uy7lJoheJSJYkOSgT6uVMbeVUKuS7KjOMYp8CkddIyT99vuk9VjEM_P5ZwT5g"
-        sample_match_ids = lol_watcher.match.matchlist_by_puuid(cluster_region, seed_puuid, count=count)
+        winning_matches = db.query(models.MatchRecord).filter(
+            models.MatchRecord.champion_name.ilike(champion_name),
+            models.MatchRecord.role_played.ilike(role),
+            models.MatchRecord.win == True
+        ).all()
 
-        if not sample_match_ids:
-            return {"champion": champion_name, "role": role, "sample_size": 0, "message": "No matches found."}
+        total_winning_games = len(winning_matches)
 
-        for m_id in sample_match_ids:
-            match_data = lol_watcher.match.by_id(cluster_region, m_id)
-            participants = match_data.get("info", {}).get("participants", [])
+        if total_winning_games == 0:
+            return {
+                "champion": champion_name.capitalize(),
+                "role": role.upper(),
+                "sample_size": 0,
+                "message": "No cached winning matches found for this champion/role in DB. Run batch-cache first."
+            }
 
-            for p in participants:
-                if (p.get("championName", "").lower() == champion_name.lower() and 
-                    p.get("teamPosition", "").upper() == role.upper() and 
-                    p.get("win") == True):
-                    
-                    total_winning_games += 1
-                    
-                    # Categorize based on typical item slots:
-                    # Slots 0-1 or specific low-cost items can be categorized or tracked
-                    for i in range(6):
-                        item_id = p.get(f"item{i}", 0)
-                        if item_id > 0:
-                            # Simple heuristic for starters/components vs core/late items based on item ID / cost
-                            # (In a full DB, you'd map item metadata for costs/tags)
-                            if item_id in [1054, 1055, 1056, 2003, 2033, 3858, 3859, 3860]: # Common starters
-                                starter_counter[item_id] += 1
-                            elif i in [0, 1, 2]: # Core build slots
-                                core_counter[item_id] += 1
-                            else: # Late game slots (4th, 5th, 6th)
-                                late_counter[item_id] += 1
+        STARTER_IDS = {1054, 1055, 1056, 1120, 2003, 2033, 3858, 3859, 3860}
 
-        # Helper function to format item lists
+        for match in winning_matches:
+            raw_items = json.loads(match.items_json) if match.items_json else []
+
+            for slot_idx, item_id in enumerate(raw_items[:6]):
+                if item_id > 0:
+                    if item_id in STARTER_IDS:
+                        starter_counter[item_id] += 1
+                    elif slot_idx in [0, 1, 2]:
+                        core_counter[item_id] += 1
+                    else:
+                        late_counter[item_id] += 1
+
         def format_items(counter, total_games):
             formatted = []
             for item_id, freq in counter.most_common(3):
@@ -511,7 +422,7 @@ def get_item_recommendations(champion_name: str, role: str, region: str = "ameri
                 elif isinstance(item_info, list) and len(item_info) > 0:
                     name = item_info[0].get("name", "Unknown")
                     icon = item_info[0].get("icon", "")
-                
+
                 win_rate = round((freq / total_games) * 100, 1) if total_games > 0 else 0
                 formatted.append({
                     "item_id": item_id,
@@ -533,57 +444,56 @@ def get_item_recommendations(champion_name: str, role: str, region: str = "ameri
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-    
+
+
 @router.get("/api/counters/{champion_name}")
-def get_champion_counters(champion_name: str, role: str = "TOP", region: str = "americas", count: int = 50):
-    cluster_region = CLUSTER_MAPPING.get(region.strip().lower(), "americas")
-    
-    matchup_stats = {} 
-
+def get_champion_counters(champion_name: str, role: str = "TOP", db: Session = Depends(get_db)):
     try:
-        seed_puuid = "vzGu0XMkUPwSkc1f4Uy7lJoheJSJYkOSgT6uVMbeVUKuS7KjOMYp8CkddIyT99vuk9VjEM_P5ZwT5g"
-        sample_match_ids = lol_watcher.match.matchlist_by_puuid(cluster_region, seed_puuid, count=count)
+        role_upper = role.upper()
+        role_variants = [role_upper]
+        if role_upper == "BOT":
+            role_variants = ["BOT", "BOTTOM"]
+        elif role_upper == "MID":
+            role_variants = ["MID", "MIDDLE"]
+        elif role_upper == "SUP":
+            role_variants = ["SUP", "UTILITY"]
 
-        if not sample_match_ids:
+        target_matches = db.query(models.MatchRecord).filter(
+            models.MatchRecord.champion_name.ilike(champion_name),
+            models.MatchRecord.role_played.in_(role_variants)
+        ).all()
+
+        if not target_matches:
             return {
                 "champion": champion_name.capitalize(),
                 "role": role.upper(),
+                "total_matches_analyzed": 0,
                 "matchups": [],
-                "message": "No match history available for analysis."
+                "message": "No cached matches found for this champion/role in DB. Run batch-cache first."
             }
 
-        for m_id in sample_match_ids:
-            match_data = lol_watcher.match.by_id(cluster_region, m_id)
-            participants = match_data.get("info", {}).get("participants", [])
+        matchup_stats = {}
+        unique_match_ids = set()
 
-            target_participants = [
-                p for p in participants 
-                if p.get("championName", "").lower() == champion_name.lower() 
-                and p.get("teamPosition", "").upper() == role.upper()
-            ]
+        for target_match in target_matches:
+            unique_match_ids.add(target_match.match_id)
+            
+            opponent_record = db.query(models.MatchRecord).filter(
+                models.MatchRecord.match_id == target_match.match_id,
+                models.MatchRecord.role_played.in_(role_variants),
+                models.MatchRecord.puuid != target_match.puuid
+            ).first()
 
-            for target in target_participants:
-                target_team = target.get("teamId")
-                target_won = target.get("win")
-                
-                opponent = next(
-                    (p for p in participants 
-                     if p.get("teamPosition", "").upper() == role.upper() 
-                     and p.get("teamId") != target_team),
-                    None
-                )
+            if opponent_record:
+                enemy_champ = opponent_record.champion_name
+                if enemy_champ not in matchup_stats:
+                    matchup_stats[enemy_champ] = {"wins": 0, "losses": 0, "games": 0}
 
-                if opponent:
-                    enemy_champ = opponent.get("championName", "Unknown")
-                    
-                    if enemy_champ not in matchup_stats:
-                        matchup_stats[enemy_champ] = {"wins": 0, "losses": 0, "games": 0}
-                    
-                    matchup_stats[enemy_champ]["games"] += 1
-                    if target_won:
-                        matchup_stats[enemy_champ]["wins"] += 1
-                    else:
-                        matchup_stats[enemy_champ]["losses"] += 1
+                matchup_stats[enemy_champ]["games"] += 1
+                if target_match.win:
+                    matchup_stats[enemy_champ]["wins"] += 1
+                else:
+                    matchup_stats[enemy_champ]["losses"] += 1
 
         counters_list = []
         for enemy, stats in matchup_stats.items():
@@ -603,7 +513,78 @@ def get_champion_counters(champion_name: str, role: str = "TOP", region: str = "
         return {
             "champion": champion_name.capitalize(),
             "role": role.upper(),
+            "total_matches_analyzed": len(unique_match_ids),
             "matchups": counters_list
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    
+@router.get("/api/recommendations/runes/{champion_name}")
+def get_rune_recommendations(champion_name: str, role: str = "TOP", db: Session = Depends(get_db)):
+    try:
+        role_upper = role.upper()
+        role_variants = [role_upper]
+        if role_upper == "BOT":
+            role_variants = ["BOT", "BOTTOM"]
+        elif role_upper == "MID":
+            role_variants = ["MID", "MIDDLE"]
+        elif role_upper == "SUP":
+            role_variants = ["SUP", "UTILITY"]
+
+        winning_matches = db.query(models.MatchRecord).filter(
+            models.MatchRecord.champion_name.ilike(champion_name),
+            models.MatchRecord.role_played.in_(role_variants),
+            models.MatchRecord.win == True
+        ).all()
+
+        total_winning_games = len(winning_matches)
+
+        if total_winning_games == 0:
+            return {
+                "champion": champion_name.capitalize(),
+                "role": role.upper(),
+                "sample_size": 0,
+                "message": "No cached winning matches found for this champion/role in DB. Run batch-cache first."
+            }
+
+        keystone_counter = Counter()
+        # Track mapping to store primary_style, keystone_id, and sub_style tuples
+        keystone_metadata = {}
+        
+        for match in winning_matches:
+            if match.keystone_id:
+                keystone_counter[match.keystone_id] += 1
+                if match.keystone_id not in keystone_metadata:
+                    keystone_metadata[match.keystone_id] = {
+                        "primary_style": match.primary_style or 0,
+                        "sub_style": match.sub_style or 0
+                    }
+
+        top_keystones = []
+        for k_id, freq in keystone_counter.most_common(3):
+            meta = keystone_metadata.get(k_id, {"primary_style": 0, "sub_style": 0})
+            
+            # Pass all 3 arguments required by itr.get_rune_details
+            rune_details = get_rune_details(
+                primary_style=meta["primary_style"],
+                keystone_id=k_id,
+                sub_style=meta["sub_style"]
+            )
+            
+            win_rate = round((freq / total_winning_games) * 100, 1) if total_winning_games > 0 else 0
+            top_keystones.append({
+                "keystone_id": k_id,
+                "details": rune_details,
+                "pick_count": freq,
+                "win_rate": f"{win_rate}%"
+            })
+
+        return {
+            "champion": champion_name.capitalize(),
+            "role": role.upper(),
+            "sample_size": total_winning_games,
+            "recommended_keystones": top_keystones
         }
 
     except Exception as e:
