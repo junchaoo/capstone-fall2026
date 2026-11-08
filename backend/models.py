@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, UniqueConstraint
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -59,3 +59,18 @@ class Social(Base):
     player_id = Column(Integer, ForeignKey("players.id"), nullable=False)
 
     player = relationship("Player", back_populates="socials")
+
+class LadderEntry(Base):
+    __tablename__ = "ladder_entries"
+    __table_args__ = (UniqueConstraint("region", "puuid", name="uq_ladder_region_puuid"),)
+ 
+    id = Column(Integer, primary_key=True, index=True)
+    region = Column(String, index=True, nullable=False)   
+    puuid = Column(String, nullable=False)                 #riots permanent player ID
+    game_name = Column(String, nullable=False, default="")  #riot ID name
+    tag_line = Column(String, nullable=False, default="")   #riot ID tag 
+    tier = Column(String, nullable=False)                 #ranks
+    lp = Column(Integer, nullable=False, default=0)
+    wins = Column(Integer, nullable=False, default=0)
+    losses = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, nullable=False)         #when this row was fetched 

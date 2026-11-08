@@ -1,7 +1,4 @@
 """
-Basic FastAPI backend for signup + login.
-
-Run this with:
     uvicorn main:app --reload
 
 Then visit http://127.0.0.1:8000/docs to see and test the endpoints
@@ -16,12 +13,13 @@ from database import Base, engine, get_db
 from models import User
 from auth import hash_password, verify_password, create_access_token
 from pros import router as pros_router
+from leaderboard import router as leaderboard_router
 
-# Creates the SQLite file + users table on first run, if they don't exist yet
+# Creates the sqlite file and users table on first run if they dont exist yet
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
-
+app.include_router(leaderboard_router)
 app.include_router(pros_router)
 
 app.add_middleware(
