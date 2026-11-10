@@ -28,3 +28,15 @@ class MatchRecord(Base):
     items_json = Column(String)  # Stored as serialized string, e.g. "[3161, 3073, 6333]"
     game_mode = Column(String)
     game_duration_seconds = Column(Integer)
+
+
+class ChampionRankingSnapshot(Base):
+    __tablename__ = "champion_ranking_snapshots"
+
+    id = Column(Integer, primary_key=True)
+    players_json = Column(String, nullable=False, default="{}")
+    updated_at = Column(String, nullable=True)
+    last_attempt_at = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="pending")
+    error = Column(String, nullable=True)
+    player_count = Column(Integer, nullable=False, default=0)

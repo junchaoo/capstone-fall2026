@@ -1,0 +1,162 @@
+.item-page-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  gap: 20px;
+  align-items: start;
+}
+
+.item-page-left {
+  display: grid;
+  gap: 20px;
+}
+
+.item-role-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.item-role-tabs.wrap {
+  flex-wrap: wrap;
+}
+
+.item-role-tabs button {
+  padding: 6px 14px;
+  border: 1px solid var(--champion-border);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.item-role-tabs button.active {
+  border-color: var(--champion-gold);
+  color: var(--champion-gold);
+}
+
+.item-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+  max-height: 78vh;
+  overflow-y: auto;
+}
+
+.item-tile-grid.compact {
+  max-height: none;
+}
+
+.item-tile {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 6px 3px;
+  border: 1px solid var(--champion-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  text-align: center;
+}
+
+.item-tile:hover,
+.item-tile.active {
+  border-color: var(--champion-gold);
+}
+
+.item-tile img {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+}
+
+.item-tile span {
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.item-tile small {
+  color: var(--champion-gold);
+}
+
+.item-detail-panel {
+  position: sticky;
+  top: 90px;
+  max-height: calc(100vh - 110px);
+  overflow-y: auto;
+}
+
+.item-detail-heading {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.item-detail-heading img {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+}
+
+.item-detail-heading h2 {
+  margin: 0 0 4px;
+}
+
+.item-gold {
+  color: var(--champion-gold);
+}
+
+.item-plaintext {
+  color: var(--champion-muted);
+  font-style: italic;
+}
+
+.item-description {
+  white-space: pre-line;
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+.item-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.item-tags span {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(200, 170, 110, 0.14);
+  font-size: 12px;
+}
+
+.item-related {
+  margin-top: 16px;
+}
+
+@media (max-width: 900px) {
+  .item-page-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .item-detail-panel {
+    position: static;
+    max-height: none;
+  }
+}
+
+.item-lane {
+  margin-top: 18px;
+}
+
+.item-lane-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  color: var(--champion-gold);
+}
+
+.item-lane-heading span {
+  color: var(--champion-muted);
+  font-size: 12px;
+}

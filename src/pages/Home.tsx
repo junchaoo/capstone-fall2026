@@ -18,6 +18,7 @@ function Home() {
           <a href='#'>Features</a>
           <a href='#'>Community</a>
           <Link to='/champions'>Champions</Link>
+          <Link to='/items'>Items</Link>
           <Link to='/login' className='signup-button'>
             Sign In
           </Link>

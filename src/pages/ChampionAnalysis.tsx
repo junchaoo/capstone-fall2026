@@ -271,6 +271,30 @@ function createChampionProfile(name: string) {
 
 const championProfiles = championNames.map(createChampionProfile);
 
+type TopPlayer = {
+  puuid: string;
+  game_name: string;
+  tag_line: string;
+  league_points: number;
+  games_played: number;
+  wins: number;
+  winrate: number;
+  kda: number;
+  score: number;
+};
+
+type TopPlayersResponse = {
+  players: TopPlayer[];
+  status: 'pending' | 'updating' | 'ready' | 'error';
+  updated_at: string | null;
+  last_attempt_at: string | null;
+  error: string | null;
+  player_count: number;
+};
+
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000')
+  .replace(/\/+$/, '');
+
 type DataDragonChampionStats = {
   hp: number;
   hpperlevel: number;
@@ -460,6 +484,10 @@ function ChampionAnalysis() {
   const [failedImages, setFailedImages] = useState<string[]>([]);
   const [failedItemImages, setFailedItemImages] = useState<string[]>([]);
   const [failedSpellImages, setFailedSpellImages] = useState<string[]>([]);
+  const [topPlayersResult, setTopPlayersResult] = useState<{
+    champion: string;
+    data: TopPlayersResponse | null;
+  } | null>(null);
 
   useEffect(() => {
     let isCurrent = true;
@@ -663,6 +691,38 @@ function ChampionAnalysis() {
 
     return filteredChampions[0] ?? championProfiles[0];
   }, [filteredChampions, selectedChampionId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const championName = selectedChampion.name;
+
+    const loadPlayers = () => {
+      fetch(`${apiBaseUrl}/api/champions/${encodeURIComponent(championName)}/top-players?limit=5`, {
+        signal: controller.signal,
+      })
+        .then((response) => {
+          if (!response.ok) throw new Error('Request failed');
+          return response.json() as Promise<TopPlayersResponse>;
+        })
+        .then((data) => setTopPlayersResult({ champion: championName, data }))
+        .catch(() => {
+          if (!controller.signal.aborted) setTopPlayersResult({ champion: championName, data: null });
+        });
+    };
+
+    loadPlayers();
+    const timer = window.setInterval(loadPlayers, 30_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [selectedChampion.name]);
+
+  const topPlayersReady = topPlayersResult?.champion === selectedChampion.name;
+  const topPlayersData = topPlayersReady ? topPlayersResult.data : null;
+  const topPlayers = topPlayersData?.players ?? [];
+  const topPlayersStatus = !topPlayersReady ? 'loading' : !topPlayersData ? 'error' : 'ready';
+
   const counterChampions = useMemo(() => {
     const normalizedCounterSearch = counterSearchTerm.trim().toLowerCase();
 
@@ -754,6 +814,7 @@ function ChampionAnalysis() {
           <a href='#abilities'>Abilities</a>
           <a href='#stats'>Stats</a>
           <a href='#skins'>Skins</a>
+          <Link to='/items'>Items</Link>
         </nav>
 
         <Link className='champion-analysis-back' to='/profile'>
@@ -895,6 +956,61 @@ function ChampionAnalysis() {
                   <li className='champion-counter-empty'>No matching champion found.</li>
                 )}
               </ul>
+            </section>
+
+            <section className='analysis-panel top-players-panel' aria-labelledby='top-players-heading'>
+              <div className='panel-header'>
+                <div>
+                  <span className='panel-eyebrow'>TOP PLAYERS</span>
+                  <h2 id='top-players-heading'>Top {selectedChampion.name} players</h2>
+                </div>
+                <span className='rune-role-label'>Games · Win rate · KDA</span>
+              </div>
+              <p className='top-players-note'>
+                NA solo queue Challenger top 20 · Last 20 matches per player · Refreshes every 6 hours.
+                Ranking combines games, win rate and KDA; it is not an official champion leaderboard.
+              </p>
+              {topPlayersData?.updated_at && (
+                <p className='top-players-note'>
+                  Updated {new Date(topPlayersData.updated_at).toLocaleString()} · {topPlayersData.player_count} players sampled
+                </p>
+              )}
+              {topPlayersData?.status === 'updating' && (
+                <p className='top-players-note' role='status'>Updating rankings. This may take several minutes.</p>
+              )}
+              {topPlayersData?.status === 'error' && (
+                <p className='top-players-note' role='alert'>
+                  Update failed. {topPlayersData.updated_at ? 'Showing the last successful results. ' : ''}
+                  {topPlayersData.error}
+                </p>
+              )}
+              {topPlayersStatus === 'loading' ? (
+                <p className='champion-skins-message' role='status'>Loading top players…</p>
+              ) : topPlayersStatus === 'error' ? (
+                <p className='champion-skins-message' role='alert'>Could not load top players.</p>
+              ) : !topPlayersData?.updated_at ? (
+                <p className='champion-skins-message'>Rankings are not available yet.</p>
+              ) : topPlayers.length === 0 ? (
+                <p className='champion-skins-message'>No sampled players played {selectedChampion.name} in their last 20 matches.</p>
+              ) : (
+                <ol className='top-players-list'>
+                  {topPlayers.map((player, index) => (
+                    <li key={player.puuid}>
+                      <Link
+                        className='top-player'
+                        to={`/profile?gameId=${encodeURIComponent(`${player.game_name}#${player.tag_line}`)}`}
+                      >
+                        <span className='top-player-rank'>{index + 1}</span>
+                        <strong>{player.game_name}<small>#{player.tag_line}</small></strong>
+                        <span>{player.games_played} games</span>
+                        <span>{player.winrate}% WR</span>
+                        <span>{player.kda} KDA</span>
+                        <span>Challenger {player.league_points} LP</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ol>
+              )}
             </section>
           </div>
 

@@ -1,8 +1,10 @@
+import asyncio
 import json
 import os
 from collections import Counter
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 import httpx
+from champion_rankings import ranking_scheduler
 from database import Base, engine, get_db
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
@@ -12,7 +14,7 @@ from riotwatcher import ApiError, LolWatcher, RiotWatcher
 from sqlalchemy.orm import Session
 
 # Load environment variables from .env file
-load_dotenv()
+load_dotenv(override=True)  # .env wins over stale keys exported in the shell
 RIOT_API_KEY = os.getenv("RIOT_API_KEY")
 
 # Automatically initialize SQLite database tables
@@ -127,7 +129,13 @@ async def load_datadragon_mappings():
 async def lifespan(app: FastAPI):
     # Fetch and cache static mappings on server boot
     await load_datadragon_mappings()
-    yield
+    scheduler = asyncio.create_task(ranking_scheduler(RIOT_API_KEY))
+    try:
+        yield
+    finally:
+        scheduler.cancel()
+        with suppress(asyncio.CancelledError):
+            await scheduler
 
 
 app = FastAPI(
@@ -503,6 +511,36 @@ def get_match_outcome(
 
 
 # Computes stats filtered across Draft (400), Flex (440), ARAM (450), and Swiftplay (490)
+@app.get("/api/champions/{champion_name}/top-players")
+def get_champion_top_players(
+    champion_name: str, limit: int = 5, db: Session = Depends(get_db)
+):
+    """Return the latest Challenger sample, independent of profile caches."""
+    limit = max(1, min(limit, 20))
+    details = get_champion_details(champion_name)
+    champion_key = champion_name.strip().lower()
+    for champion in CHAMPION_MAP.values():
+        if champion_key in (champion["name"].lower(), champion["id"].lower()):
+            champion_key = champion["id"].lower()
+            break
+    snapshot = db.get(models.ChampionRankingSnapshot, 1)
+    if snapshot is None:
+        return {
+            "champion": details, "players": [], "status": "pending",
+            "updated_at": None, "last_attempt_at": None, "error": None, "player_count": 0,
+        }
+    rankings = json.loads(snapshot.players_json)
+    return {
+        "champion": details,
+        "players": rankings.get(champion_key, [])[:limit],
+        "status": snapshot.status,
+        "updated_at": snapshot.updated_at,
+        "last_attempt_at": snapshot.last_attempt_at,
+        "error": snapshot.error,
+        "player_count": snapshot.player_count,
+    }
+
+
 @app.get("/api/analytics/{puuid}")
 def get_player_analytics(
     puuid: str, queue: int | None = None, db: Session = Depends(get_db)
