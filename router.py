@@ -29,8 +29,27 @@ PLATFORM_MAPPING = {
     "europe": "euw1", "euw1": "euw1", "asia": "kr", "kr": "kr",
 }
 
+# Component and item filters to prevent build noise
+BOOTS_IDS = {3006, 3009, 3020, 3047, 3111, 3117, 3158}
+STARTER_IDS = {1054, 1055, 1056, 1120, 2003, 2033, 3858, 3859, 3860}
+COMPONENT_EXCLUSIONS = {
+    1018, # Cloak of Agility
+    1036, # Long Sword
+    1037, # Pickaxe
+    1042, # Dagger
+    1052, # Amplifying Tome
+    1053, # Vampiric Scepter
+    1011, # Giant's Belt
+    1028, # Ruby Crystal
+    1029, # Cloth Armor
+    1031, # Chain Vest
+    1033, # Null-Magic Mantle
+    2003, # Health Potion
+    2055, # Control Ward
+    3340, # Stealth Ward
+}
 
-# --- 1. PLAYER ACCOUNT & RANK ENDPOINTS ---
+
 @router.get("/api/player/{region}/{game_name}/{tag_line}")
 def get_or_fetch_player(region: str, game_name: str, tag_line: str, db: Session = Depends(get_db)):
     clean_region = region.strip().lower()
@@ -159,14 +178,12 @@ def batch_cache_matches(region: str, puuid: str, count: int = 200, queue: int | 
 
     cached_count = 0
     for match_id in match_ids:
-        # Check if match is already fully cached in DB
         if db.query(models.MatchRecord).filter_by(match_id=match_id).first():
             continue
         try:
             match_data = lol_watcher.match.by_id(cluster_region, match_id)
             info = match_data["info"]
             
-            # STORE ALL 10 PARTICIPANTS FOR UNIVERSAL GLOBAL ANALYTICS
             for s_player in info.get("participants", []):
                 p_puuid = s_player.get("puuid", "UNKNOWN")
                 is_win = s_player["win"]
@@ -396,19 +413,30 @@ def get_item_recommendations(
                 "message": "No cached winning matches found for this champion/role in DB. Run batch-cache first."
             }
 
-        STARTER_IDS = {1054, 1055, 1056, 1120, 2003, 2033, 3858, 3859, 3860}
-
         for match in winning_matches:
             raw_items = json.loads(match.items_json) if match.items_json else []
 
-            for slot_idx, item_id in enumerate(raw_items[:6]):
-                if item_id > 0:
-                    if item_id in STARTER_IDS:
-                        starter_counter[item_id] += 1
-                    elif slot_idx in [0, 1, 2]:
-                        core_counter[item_id] += 1
-                    else:
-                        late_counter[item_id] += 1
+            # Filter out components, boots, starters, and empty slots
+            completed_legendaries = [
+                item_id for item_id in raw_items 
+                if item_id > 0 
+                and item_id not in STARTER_IDS 
+                and item_id not in BOOTS_IDS 
+                and item_id not in COMPONENT_EXCLUSIONS
+            ]
+
+            # Process Starting Items separately from raw items
+            for item_id in raw_items[:6]:
+                if item_id in STARTER_IDS:
+                    starter_counter[item_id] += 1
+
+            # Core Items = First 2 completed legendary items
+            for item_id in set(completed_legendaries[:2]):
+                core_counter[item_id] += 1
+
+            # Late Game Options = 3rd+ completed legendary items
+            for item_id in set(completed_legendaries[2:]):
+                late_counter[item_id] += 1
 
         def format_items(counter, total_games):
             formatted = []
@@ -519,7 +547,8 @@ def get_champion_counters(champion_name: str, role: str = "TOP", db: Session = D
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-    
+
+
 @router.get("/api/recommendations/runes/{champion_name}")
 def get_rune_recommendations(champion_name: str, role: str = "TOP", db: Session = Depends(get_db)):
     try:
@@ -549,7 +578,6 @@ def get_rune_recommendations(champion_name: str, role: str = "TOP", db: Session 
             }
 
         keystone_counter = Counter()
-        # Track mapping to store primary_style, keystone_id, and sub_style tuples
         keystone_metadata = {}
         
         for match in winning_matches:
@@ -565,7 +593,6 @@ def get_rune_recommendations(champion_name: str, role: str = "TOP", db: Session 
         for k_id, freq in keystone_counter.most_common(3):
             meta = keystone_metadata.get(k_id, {"primary_style": 0, "sub_style": 0})
             
-            # Pass all 3 arguments required by itr.get_rune_details
             rune_details = get_rune_details(
                 primary_style=meta["primary_style"],
                 keystone_id=k_id,
