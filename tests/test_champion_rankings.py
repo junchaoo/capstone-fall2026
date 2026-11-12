@@ -208,6 +208,32 @@ class ChampionRankingsTest(unittest.IsolatedAsyncioTestCase):
             finally:
                 main.app.dependency_overrides.clear()
 
+    async def test_profile_icon_endpoint_uses_summoner_icon_and_current_patch(self):
+        import main
+
+        with (
+            patch.object(main, "DDRAGON_VERSION", "16.22.1"),
+            patch.object(main.lol_watcher.summoner, "by_puuid", return_value={"profileIconId": 123}) as lookup,
+        ):
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=main.app), base_url="http://test"
+            ) as client:
+                response = await client.get("/api/summoner/na1/player/profile-icon")
+                invalid_region = await client.get("/api/summoner/invalid/player/profile-icon")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json(), {
+                "icon_url": "https://ddragon.leagueoflegends.com/cdn/16.22.1/img/profileicon/123.png"
+            })
+            self.assertEqual(invalid_region.status_code, 400)
+            lookup.assert_called_once_with("na1", "player")
+
+        with patch.object(main.lol_watcher.summoner, "by_puuid", return_value={}):
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=main.app), base_url="http://test"
+            ) as client:
+                response = await client.get("/api/summoner/na1/player/profile-icon")
+            self.assertEqual(response.status_code, 502)
+
 
 if __name__ == "__main__":
     unittest.main()

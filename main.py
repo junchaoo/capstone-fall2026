@@ -292,6 +292,25 @@ def get_or_fetch_player(
     return {"source": "live_api_fetch", "data": db_player}
 
 
+@app.get("/api/summoner/{region}/{puuid}/profile-icon")
+def get_summoner_profile_icon(region: str, puuid: str):
+    platform_region = PLATFORM_MAPPING.get(region.strip().lower())
+    if not platform_region:
+        raise HTTPException(status_code=400, detail="Unsupported region.")
+    try:
+        summoner = lol_watcher.summoner.by_puuid(platform_region, puuid.strip())
+    except ApiError as err:
+        status_code = err.response.status_code if hasattr(err, "response") else 502
+        print(f"[RIOT API ERROR - Profile Icon] Status: {status_code}")
+        raise HTTPException(status_code=status_code, detail="Could not fetch summoner profile icon.")
+    icon_id = summoner.get("profileIconId")
+    if not isinstance(icon_id, int) or isinstance(icon_id, bool) or icon_id < 0:
+        raise HTTPException(status_code=502, detail="Riot API did not return a valid profile icon.")
+    return {
+        "icon_url": f"https://ddragon.leagueoflegends.com/cdn/{DDRAGON_VERSION}/img/profileicon/{icon_id}.png"
+    }
+
+
 # Match List Endpoint: Focused on Draft (400), Flex (440), and Standard ARAM (450) with start/count pagination
 @app.get("/api/matches/{region}/{puuid}")
 def get_player_matches(

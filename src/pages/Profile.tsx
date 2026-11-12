@@ -8,6 +8,7 @@ type JsonRecord = Record<string, unknown>;
 
 type ProfileMatch = {
   champion: string;
+  championIcon: string | null;
   role: string;
   result: string;
   duration: string;
@@ -18,12 +19,14 @@ type ProfileMatch = {
 
 type ProfileChampion = {
   name: string;
+  icon: string | null;
   games: number;
   winRate: number | null;
   kda: number | null;
 };
 
 type ProfileData = {
+  puuid: string;
   gameName: string;
   tagLine: string;
   wins: number | null;
@@ -36,6 +39,7 @@ type ProfileData = {
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000')
   .replace(/\/+$/, '');
+const PROFILE_MATCH_LIMIT = 20;
 
 function asRecord(value: unknown): JsonRecord | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -104,6 +108,7 @@ function parseMatch(value: unknown): ProfileMatch | null {
   const champion = firstValue(match, ['champion_name', 'championName', 'champion']);
   const championData = asRecord(champion);
   const championName = firstValue(championData, ['name']);
+  const championIcon = firstValue(championData, ['icon']);
   const outcome = firstValue(match, ['outcome']);
   const duration = firstValue(match, [
     'game_duration_seconds',
@@ -119,6 +124,7 @@ function parseMatch(value: unknown): ProfileMatch | null {
         : typeof championName === 'string'
           ? championName
           : 'Unknown champion',
+    championIcon: typeof championIcon === 'string' && championIcon.trim() ? championIcon : null,
     role: String(firstValue(match, ['role', 'team_position', 'teamPosition', 'lane']) ?? '—'),
     result:
       won !== null
@@ -170,14 +176,16 @@ function parseChampions(value: unknown): ProfileChampion[] {
       metric(entryData, ['games', 'games_played', 'gamesPlayed', 'count']) ?? 0;
     const winRate = metric(entryData, ['win_rate', 'winRate', 'winrate']);
     const kda = metric(entryData, ['average_kda', 'avg_kda', 'kda']);
-    return [{ name, games, winRate, kda }];
+    const icon = firstValue(champion, ['icon']);
+    return [{ name, icon: typeof icon === 'string' && icon.trim() ? icon : null, games, winRate, kda }];
   });
 }
 
 function deriveChampions(matches: ProfileMatch[]): ProfileChampion[] {
-  const grouped = new Map<string, { games: number; wins: number; knownResults: number }>();
+  const grouped = new Map<string, { games: number; wins: number; knownResults: number; icon: string | null }>();
   for (const match of matches) {
-    const stats = grouped.get(match.champion) ?? { games: 0, wins: 0, knownResults: 0 };
+    const stats = grouped.get(match.champion) ?? { games: 0, wins: 0, knownResults: 0, icon: null };
+    stats.icon ??= match.championIcon;
     stats.games += 1;
     if (match.won !== null) {
       stats.knownResults += 1;
@@ -188,12 +196,27 @@ function deriveChampions(matches: ProfileMatch[]): ProfileChampion[] {
   return [...grouped.entries()]
     .map(([name, stats]) => ({
       name,
+      icon: stats.icon,
       games: stats.games,
       winRate: stats.knownResults ? stats.wins / stats.knownResults : null,
       kda: null,
     }))
     .sort((left, right) => right.games - left.games)
     .slice(0, 3);
+}
+
+function ChampionIcon({ champion }: { champion: ProfileChampion }) {
+  const [failedIcon, setFailedIcon] = useState<string | null>(null);
+
+  return (
+    <span className='profile-champion-icon'>
+      {champion.icon && champion.icon !== failedIcon ? (
+        <img src={champion.icon} alt='' loading='lazy' onError={() => setFailedIcon(champion.icon)} />
+      ) : (
+        champion.name.charAt(0).toUpperCase()
+      )}
+    </span>
+  );
 }
 
 async function loadProfile(
@@ -212,14 +235,14 @@ async function loadProfile(
 
   const encodedPuuid = encodeURIComponent(puuid);
   await fetchJson(
-    `${apiBaseUrl}/api/matches/${region}/${encodedPuuid}/batch-cache?count=5`,
+    `${apiBaseUrl}/api/matches/${region}/${encodedPuuid}/batch-cache?count=${PROFILE_MATCH_LIMIT}`,
     signal,
     'POST',
   );
 
   const [analyticsResponse, matchesResponse] = await Promise.all([
     fetchJson(`${apiBaseUrl}/api/analytics/${encodedPuuid}`, signal),
-    fetchJson(`${apiBaseUrl}/api/matches/${region}/${encodedPuuid}?count=5`, signal),
+    fetchJson(`${apiBaseUrl}/api/matches/${region}/${encodedPuuid}?count=${PROFILE_MATCH_LIMIT}`, signal),
   ]);
   const analytics = asRecord(responseData(analyticsResponse));
   const summary = asRecord(analytics?.summary) ?? analytics;
@@ -262,6 +285,7 @@ async function loadProfile(
   const tag = firstValue(playerData, ['tagLine', 'tag_line', 'tag']);
 
   return {
+    puuid,
     gameName: typeof name === 'string' ? name : gameName,
     tagLine: typeof tag === 'string' ? tag : tagLine,
     wins,
@@ -287,6 +311,8 @@ function Profile() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [profileIcon, setProfileIcon] = useState('');
+  const [iconError, setIconError] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -321,6 +347,33 @@ function Profile() {
     void loadRequestedProfile();
     return () => controller.abort();
   }, [requestedGameId, gameName, gameTag]);
+
+  const profilePuuid = profile?.puuid;
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadIcon() {
+      setProfileIcon('');
+      setIconError(false);
+      if (!profilePuuid) return;
+      try {
+        const response = asRecord(await fetchJson(
+          `${apiBaseUrl}/api/summoner/na1/${encodeURIComponent(profilePuuid)}/profile-icon`,
+          controller.signal,
+        ));
+        if (typeof response?.icon_url !== 'string' || !response.icon_url) {
+          throw new Error('Profile icon response did not include an icon URL.');
+        }
+        setProfileIcon(response.icon_url);
+      } catch (reason: unknown) {
+        if (!controller.signal.aborted) {
+          console.error('Could not load profile icon:', reason);
+          setIconError(true);
+        }
+      }
+    }
+    void loadIcon();
+    return () => controller.abort();
+  }, [profilePuuid]);
 
   const displayName = profile?.gameName ?? gameName;
   const matches = profile?.matches ?? [];
@@ -392,7 +445,16 @@ function Profile() {
         >
           <div className='summoner-info'>
             <div className='summoner-avatar'>
-              {displayName.charAt(0).toUpperCase() || '?'}
+              {profileIcon && !iconError ? (
+                <img
+                  src={profileIcon}
+                  alt=''
+                  onError={() => {
+                    console.error('Could not load profile icon image:', profileIcon);
+                    setIconError(true);
+                  }}
+                />
+              ) : displayName.charAt(0).toUpperCase() || '?'}
               <span />
             </div>
             <div>
@@ -414,6 +476,7 @@ function Profile() {
               <p className='summoner-updated'>
                 {profile ? 'Profile data loaded from the API' : 'Rank details are not available'}
               </p>
+              {iconError && <p className='summoner-updated' role='status'>Profile icon unavailable.</p>}
             </div>
           </div>
           <div className='summoner-rank'>
@@ -469,7 +532,12 @@ function Profile() {
                 <span className='panel-period'>Recent cached games</span>
               </div>
               <div className='performance-summary'>
-                <div className='win-rate-ring'>
+                <div
+                  className='win-rate-ring'
+                  style={{
+                    background: `conic-gradient(#8cbe91 ${Math.min(100, Math.max(0, (recentWinRate ?? 0) * 100)).toFixed(1)}%, #303a4c 0)`,
+                  }}
+                >
                   <div>
                     <strong>
                       {formatPercent(recentWinRate)}
@@ -565,11 +633,7 @@ function Profile() {
               <div className='top-champion-list'>
                 {champions.map((champion, index) => (
                   <article className='top-champion-row' key={champion.name}>
-                    <span
-                      className='profile-champion-icon'
-                    >
-                      {champion.name.charAt(0).toUpperCase()}
-                    </span>
+                    <ChampionIcon champion={champion} />
                     <div className='top-champion-name'>
                       <strong>{champion.name}</strong>
                       <span>{champion.games} games</span>
