@@ -9,7 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from champion_rankings import RiotCollector, refresh_rankings
+from champion_rankings import RiotCollector, ranking_scheduler, refresh_rankings
 from database import Base
 from models import ChampionRankingSnapshot
 
@@ -25,22 +25,28 @@ class ChampionRankingsTest(unittest.IsolatedAsyncioTestCase):
     def tearDown(self):
         self.engine.dispose()
 
-    async def test_collects_top_20_and_reuses_shared_matches(self):
+    async def test_collects_top_20_per_tier_and_reuses_shared_matches(self):
         calls = []
-        entries = [{"puuid": f"p{i}", "leaguePoints": i} for i in range(22)]
+        tiers = ("challenger", "grandmaster", "master")
+        entries = {
+            tier: [{"puuid": f"{tier}{i}", "leaguePoints": i} for i in range(22)]
+            for tier in tiers
+        }
         participants = [
             {
-                "puuid": f"p{i}", "championName": "Ahri", "win": i % 2 == 0,
+                "puuid": f"{tier}{i}", "championName": "Ahri", "win": i % 2 == 0,
                 "kills": 4, "deaths": 2, "assists": 2,
             }
+            for tier in tiers
             for i in range(22)
         ]
 
         def handler(request):
             calls.append(request)
             path = request.url.path
-            if "challengerleagues" in path:
-                return httpx.Response(200, json={"entries": entries})
+            for tier in tiers:
+                if f"{tier}leagues" in path:
+                    return httpx.Response(200, json={"entries": entries[tier]})
             if "accounts/by-puuid" in path:
                 puuid = path.rsplit("/", 1)[-1]
                 return httpx.Response(200, json={"gameName": puuid, "tagLine": "NA1"})
@@ -52,13 +58,47 @@ class ChampionRankingsTest(unittest.IsolatedAsyncioTestCase):
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
             rankings, count = await RiotCollector(client, "test-key", 0).collect()
 
-        self.assertEqual(count, 20)
-        self.assertEqual(len(rankings["ahri"]), 20)
-        self.assertNotIn("p0", [p["puuid"] for p in rankings["ahri"]])
-        self.assertNotIn("p1", [p["puuid"] for p in rankings["ahri"]])
-        self.assertEqual(rankings["ahri"][0]["puuid"], "p20")
+        self.assertEqual(count, 60)
+        self.assertEqual(len(rankings["ahri"]), 60)
+        for tier in tiers:
+            players = [player for player in rankings["ahri"] if player["tier"] == tier]
+            self.assertEqual(len(players), 20)
+            self.assertNotIn(f"{tier}0", [player["puuid"] for player in players])
+            self.assertNotIn(f"{tier}1", [player["puuid"] for player in players])
+        self.assertEqual(rankings["ahri"][0]["puuid"], "challenger20")
         self.assertEqual(rankings["ahri"][0]["score"], 0.75)
         self.assertEqual(sum(r.url.path.endswith("/NA1_shared") for r in calls), 1)
+
+    async def test_deduplicates_players_across_tiers(self):
+        requests = []
+
+        def handler(request):
+            requests.append(request)
+            path = request.url.path
+            if "leagues/by-queue" in path:
+                return httpx.Response(200, json={"entries": [{"puuid": "p", "leaguePoints": 100}]})
+            if "accounts/by-puuid" in path:
+                return httpx.Response(200, json={"gameName": "Player", "tagLine": "NA1"})
+            if path.endswith("/ids"):
+                return httpx.Response(200, json=["NA1_1"])
+            return httpx.Response(200, json={"info": {"participants": [{
+                "puuid": "p", "championName": "Ahri", "win": True,
+                "kills": 4, "deaths": 2, "assists": 2,
+            }]}})
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            rankings, count = await RiotCollector(client, "test-key", 0).collect()
+
+        self.assertEqual(count, 1)
+        self.assertEqual(len(rankings["ahri"]), 1)
+        self.assertEqual(rankings["ahri"][0]["tier"], "challenger")
+        self.assertEqual(sum("accounts/by-puuid" in request.url.path for request in requests), 1)
+
+    async def test_all_empty_leaderboards_fail(self):
+        transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"entries": []}))
+        async with httpx.AsyncClient(transport=transport) as client:
+            with self.assertRaisesRegex(RuntimeError, "empty.*leaderboards"):
+                await RiotCollector(client, "test-key", 0).collect()
 
     async def test_failure_retains_complete_previous_snapshot(self):
         with self.sessions() as db:
@@ -67,7 +107,12 @@ class ChampionRankingsTest(unittest.IsolatedAsyncioTestCase):
                 updated_at="2026-01-01T00:00:00+00:00", status="ready", player_count=20,
             ))
             db.commit()
-        transport = httpx.MockTransport(lambda request: httpx.Response(403))
+        def handler(request):
+            if "challengerleagues" in request.url.path:
+                return httpx.Response(200, json={"entries": [{"puuid": "p", "leaguePoints": 100}]})
+            return httpx.Response(403)
+
+        transport = httpx.MockTransport(handler)
 
         await refresh_rankings("expired-key", self.sessions, transport, 0)
 
@@ -81,7 +126,7 @@ class ChampionRankingsTest(unittest.IsolatedAsyncioTestCase):
     async def test_refresh_publishes_snapshot_only_after_success(self):
         def handler(request):
             path = request.url.path
-            if "challengerleagues" in path:
+            if "leagues/by-queue" in path:
                 return httpx.Response(200, json={"entries": [{"puuid": "p", "leaguePoints": 1000}]})
             if "accounts/by-puuid" in path:
                 return httpx.Response(200, json={"gameName": "Player", "tagLine": "NA1"})
@@ -99,6 +144,25 @@ class ChampionRankingsTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(snapshot.player_count, 1)
             self.assertIsNotNone(snapshot.updated_at)
             self.assertEqual(json.loads(snapshot.players_json)["monkeyking"][0]["game_name"], "Player")
+            self.assertEqual(json.loads(snapshot.players_json)["monkeyking"][0]["tier"], "challenger")
+
+    async def test_legacy_snapshot_refreshes_immediately_on_startup(self):
+        with self.sessions() as db:
+            db.add(ChampionRankingSnapshot(
+                id=1, players_json=json.dumps({"ahri": [{"game_name": "Old"}]}),
+                last_attempt_at="2099-01-01T00:00:00+00:00", status="ready", player_count=1,
+            ))
+            db.commit()
+        with (
+            patch("champion_rankings.SessionLocal", self.sessions),
+            patch("champion_rankings.refresh_rankings", new_callable=AsyncMock) as refresh,
+            patch("champion_rankings.asyncio.sleep", new_callable=AsyncMock) as sleep,
+        ):
+            refresh.side_effect = RuntimeError("stop scheduler")
+            with self.assertRaisesRegex(RuntimeError, "stop scheduler"):
+                await ranking_scheduler("test-key")
+            refresh.assert_awaited_once_with("test-key")
+            sleep.assert_not_awaited()
 
     async def test_rate_limit_uses_retry_after(self):
         responses = iter([

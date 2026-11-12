@@ -2,7 +2,7 @@
 
 ## Champion top players
 
-The root `main.py` API collects NA solo-queue Challenger players, not the separate
+The root `main.py` API collects NA solo-queue Challenger, Grandmaster, and Master players, not the separate
 authentication API in `backend/main.py`. Configure `RIOT_API_KEY` in a root
 `.env` file and install the backend dependencies in a Python environment:
 
@@ -17,11 +17,16 @@ otherwise duplicate Riot requests. The collector starts with the API and runs
 every six hours while it stays running. It retries unsuccessful refreshes after
 15 minutes, respects Riot's 429 `Retry-After`, and retains the last complete
 snapshot if a refresh fails. Restarting the API retries a failed or interrupted
-refresh immediately. An initial refresh may take several minutes.
+refresh immediately. On upgrade, an existing Challenger-only snapshot triggers
+an immediate refresh and remains available until the new snapshot succeeds.
+An initial refresh may take a long time because Riot requests are rate limited.
 Development keys expire and must be renewed; restart the API after changing one.
 
-The ranking samples the 20 highest-LP NA Challenger solo-queue players and each
-player's latest 20 matches across all queues, not all players on the server.
+The ranking samples up to the 20 highest-LP players from each of the NA
+Challenger, Grandmaster, and Master solo-queue tiers (up to 60 distinct players),
+and each player's latest 20 matches across all queues, not all players on the
+server. Players who appear in multiple leaderboards are counted once. This
+sample does not guarantee three players for every champion.
 For each champion, it ranks the sample by `games * (win rate + capped KDA / 6) / 2`;
 win rate is a fraction and KDA is capped at 6 for scoring. There is no minimum
 champion game count, so results with small samples can be misleading. The page

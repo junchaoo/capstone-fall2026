@@ -275,6 +275,7 @@ type TopPlayer = {
   puuid: string;
   game_name: string;
   tag_line: string;
+  tier?: 'challenger' | 'grandmaster' | 'master';
   league_points: number;
   games_played: number;
   wins: number;
@@ -967,7 +968,7 @@ function ChampionAnalysis() {
                 <span className='rune-role-label'>Games · Win rate · KDA</span>
               </div>
               <p className='top-players-note'>
-                NA solo queue Challenger top 20 · Last 20 matches per player · Refreshes every 6 hours.
+                NA solo queue Challenger, Grandmaster and Master: up to 20 players per tier · Last 20 matches per player · Refreshes every 6 hours.
                 Ranking combines games, win rate and KDA; it is not an official champion leaderboard.
               </p>
               {topPlayersData?.updated_at && (
@@ -1002,10 +1003,12 @@ function ChampionAnalysis() {
                       >
                         <span className='top-player-rank'>{index + 1}</span>
                         <strong>{player.game_name}<small>#{player.tag_line}</small></strong>
-                        <span>{player.games_played} games</span>
-                        <span>{player.winrate}% WR</span>
-                        <span>{player.kda} KDA</span>
-                        <span>Challenger {player.league_points} LP</span>
+                        <span className='top-player-stats'>
+                          <span>{player.games_played} games</span>
+                          <span>{player.winrate}% WR</span>
+                          <span>{player.kda} KDA</span>
+                          <span>{player.tier ? player.tier[0].toUpperCase() + player.tier.slice(1) : 'Challenger'} {player.league_points} LP</span>
+                        </span>
                       </Link>
                     </li>
                   ))}

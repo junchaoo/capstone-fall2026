@@ -515,7 +515,7 @@ def get_match_outcome(
 def get_champion_top_players(
     champion_name: str, limit: int = 5, db: Session = Depends(get_db)
 ):
-    """Return the latest Challenger sample, independent of profile caches."""
+    """Return the latest high-tier sample, independent of profile caches."""
     limit = max(1, min(limit, 20))
     details = get_champion_details(champion_name)
     champion_key = champion_name.strip().lower()

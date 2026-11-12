@@ -12,7 +12,8 @@ from models import ChampionRankingSnapshot
 
 logger = logging.getLogger(__name__)
 
-PLAYER_LIMIT = 20
+PLAYER_LIMIT_PER_TIER = 20
+LEAGUE_TIERS = ("challenger", "grandmaster", "master")
 MATCH_LIMIT = 20
 REFRESH_INTERVAL = timedelta(hours=6)
 FAILURE_RETRY_INTERVAL = timedelta(minutes=15)
@@ -70,20 +71,28 @@ class RiotCollector:
         raise RuntimeError("Riot API request failed.")
 
     async def collect(self):
-        league = await self.get(
-            "na1", "/lol/league/v4/challengerleagues/by-queue/RANKED_SOLO_5x5"
-        )
-        entries = sorted(
-            league["entries"], key=lambda entry: (-entry["leaguePoints"], entry.get("puuid", ""))
-        )[:PLAYER_LIMIT]
+        entries = []
+        seen_puuids = set()
+        for tier in LEAGUE_TIERS:
+            league = await self.get(
+                "na1", f"/lol/league/v4/{tier}leagues/by-queue/RANKED_SOLO_5x5"
+            )
+            tier_entries = sorted(
+                league["entries"], key=lambda entry: (-entry["leaguePoints"], entry.get("puuid", ""))
+            )[:PLAYER_LIMIT_PER_TIER]
+            for entry in tier_entries:
+                puuid = entry.get("puuid")
+                if not puuid:
+                    raise RuntimeError(f"{tier.capitalize()} leaderboard entries did not include PUUIDs.")
+                if puuid not in seen_puuids:
+                    entries.append((tier, entry))
+                    seen_puuids.add(puuid)
         if not entries:
-            raise RuntimeError("Riot API returned an empty Challenger leaderboard.")
-        if any(not entry.get("puuid") for entry in entries):
-            raise RuntimeError("Challenger leaderboard entries did not include PUUIDs.")
+            raise RuntimeError("Riot API returned empty Challenger, Grandmaster, and Master leaderboards.")
 
         matches_by_id = {}
         rankings = defaultdict(list)
-        for entry in entries:
+        for tier, entry in entries:
             puuid = entry["puuid"]
             encoded_puuid = quote(puuid, safe="")
             account = await self.get(
@@ -123,6 +132,7 @@ class RiotCollector:
                     "puuid": puuid,
                     "game_name": account["gameName"],
                     "tag_line": account["tagLine"],
+                    "tier": tier,
                     "league_points": entry["leaguePoints"],
                     "games_played": games,
                     "wins": stat["wins"],
@@ -186,6 +196,12 @@ async def ranking_scheduler(api_key):
                 snapshot.error = "Previous ranking refresh was interrupted."
             last_attempt = snapshot.last_attempt_at
             if first_run and snapshot.status != "ready":
+                last_attempt = None
+            elif first_run and any(
+                "tier" not in player
+                for players in json.loads(snapshot.players_json).values()
+                for player in players
+            ):
                 last_attempt = None
             interval = REFRESH_INTERVAL if snapshot.status == "ready" else FAILURE_RETRY_INTERVAL
             db.commit()
