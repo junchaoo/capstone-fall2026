@@ -184,7 +184,7 @@ class ChampionRankingsTest(unittest.IsolatedAsyncioTestCase):
                     import main
             finally:
                 os.chdir(original_dir)
-            main.CHAMPION_MAP = {62: {"id": "MonkeyKing", "name": "Wukong", "icon": "icon"}}
+            main.itr.CHAMPION_MAP = {62: {"id": "MonkeyKing", "name": "Wukong", "icon": "icon"}}
             with self.sessions() as db:
                 db.add(ChampionRankingSnapshot(
                     id=1, players_json=json.dumps({"monkeyking": [{"game_name": "Sample"}]}),
@@ -207,6 +207,10 @@ class ChampionRankingsTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(http_response.json()["players"][0]["game_name"], "Sample")
             finally:
                 main.app.dependency_overrides.clear()
+            paths = main.app.openapi()["paths"]
+            self.assertIn("/api/recommendations/items", paths)
+            self.assertIn("/api/match/{region}/{match_id}/{puuid}/outcome", paths)
+            self.assertIn("post", paths["/api/matches/{region}/{puuid}/batch-cache"])
 
 
 if __name__ == "__main__":

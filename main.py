@@ -3,131 +3,28 @@ import json
 import os
 from collections import Counter
 from contextlib import asynccontextmanager, suppress
-import httpx
 from champion_rankings import ranking_scheduler
-from database import Base, engine, get_db
+from database import engine, get_db, migrate_match_record_columns
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import models
-from riotwatcher import ApiError, LolWatcher, RiotWatcher
 from sqlalchemy.orm import Session
+import models
+import itr
+from itr import load_datadragon_mappings, CORE_QUEUES, get_champion_details, get_item_details
+from riotwatcher import ApiError
 
 # Load environment variables from .env file
 load_dotenv(override=True)  # .env wins over stale keys exported in the shell
 RIOT_API_KEY = os.getenv("RIOT_API_KEY")
+from router import router, CLUSTER_MAPPING, lol_watcher
 
 # Automatically initialize SQLite database tables
 models.Base.metadata.create_all(bind=engine)
-
-# Initialize Riot API wrappers
-riot_watcher = RiotWatcher(RIOT_API_KEY)
-lol_watcher = LolWatcher(RIOT_API_KEY)
-
-# Types of gamemodes 
-CORE_QUEUES = {
-    400: "Normal Draft Pick",
-    440: "Ranked Flex",
-    450: "Standard ARAM",
-    490: "Quickplay / Swiftplay",
-}
-
-DDRAGON_VERSION = "14.1.1"  # Fallback patch version
-CHAMPION_MAP = {}
-ITEM_MAP = {}
-SPELL_MAP = {}
-RUNE_MAP = {}
-
-
-async def load_datadragon_mappings():
-    global DDRAGON_VERSION, CHAMPION_MAP, ITEM_MAP, SPELL_MAP, RUNE_MAP
-
-    async with httpx.AsyncClient() as client:
-        # Fetch latest Data Dragon patch version
-        try:
-            versions_res = await client.get(
-                "https://ddragon.leagueoflegends.com/api/versions.json"
-            )
-            if versions_res.status_code == 200:
-                DDRAGON_VERSION = versions_res.json()[0]
-                print(f"[DDragon] Using active patch version: {DDRAGON_VERSION}")
-        except Exception as e:
-            print(
-                f"[DDragon] Version fetch failed, using fallback {DDRAGON_VERSION}: {e}"
-            )
-
-        base_url = (
-            f"https://ddragon.leagueoflegends.com/cdn/{DDRAGON_VERSION}/data/en_US"
-        )
-        cdn_img_base = (
-            f"https://ddragon.leagueoflegends.com/cdn/{DDRAGON_VERSION}/img"
-        )
-
-        # Map Champions 
-        try:
-            champ_res = await client.get(f"{base_url}/champion.json")
-            champ_data = champ_res.json()["data"]
-            CHAMPION_MAP = {
-                int(details["key"]): {
-                    "name": details["name"],
-                    "id": details["id"],
-                    "icon": f"{cdn_img_base}/champion/{details['image']['full']}",
-                }
-                for details in champ_data.values()
-            }
-            print(f"[DDragon] Loaded {len(CHAMPION_MAP)} champions")
-        except Exception as e:
-            print(f"[DDragon] Champion mapping error: {e}")
-
-        # Map Items
-        try:
-            item_res = await client.get(f"{base_url}/item.json")
-            item_data = item_res.json()["data"]
-            ITEM_MAP = {
-                int(item_id): {
-                    "name": details["name"],
-                    "icon": f"{cdn_img_base}/item/{details['image']['full']}",
-                }
-                for item_id, details in item_data.items()
-            }
-            print(f"[DDragon] Loaded {len(ITEM_MAP)} items")
-        except Exception as e:
-            print(f"[DDragon] Item mapping error: {e}")
-
-        # Map Summoner Spells
-        try:
-            spell_res = await client.get(f"{base_url}/summoner.json")
-            spell_data = spell_res.json()["data"]
-            SPELL_MAP = {
-                int(details["key"]): {
-                    "name": details["name"],
-                    "icon": f"{cdn_img_base}/spell/{details['image']['full']}",
-                }
-                for details in spell_data.values()
-            }
-            print(f"[DDragon] Loaded {len(SPELL_MAP)} summoner spells")
-        except Exception as e:
-            print(f"[DDragon] Summoner spell mapping error: {e}")
-
-        # Map Runes Reforged
-        try:
-            rune_res = await client.get(f"{base_url}/runesReforged.json")
-            rune_data = rune_res.json()
-            RUNE_MAP = {
-                tree["id"]: {
-                    "name": tree["name"],
-                    "icon": f"https://ddragon.leagueoflegends.com/cdn/img/{tree['icon']}",
-                }
-                for tree in rune_data
-            }
-            print(f"[DDragon] Loaded {len(RUNE_MAP)} rune trees")
-        except Exception as e:
-            print(f"[DDragon] Rune mapping error: {e}")
-
+migrate_match_record_columns(engine)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Fetch and cache static mappings on server boot
     await load_datadragon_mappings()
     scheduler = asyncio.create_task(ranking_scheduler(RIOT_API_KEY))
     try:
@@ -137,11 +34,9 @@ async def lifespan(app: FastAPI):
         with suppress(asyncio.CancelledError):
             await scheduler
 
-
 app = FastAPI(
     title="League of Legends Core Analytics Backend",
-    description="Analytics system focused on Normal Draft (400), Ranked Flex (440), Standard ARAM (450), and Quickplay/Swiftplay (490).",
-    lifespan=lifespan,
+    lifespan=lifespan
 )
 allowed_origins = [
     origin.strip()
@@ -158,249 +53,13 @@ app.add_middleware(
     allow_headers=["Accept", "Content-Type"],
 )
 
-# Regional cluster routing
-CLUSTER_MAPPING = {
-    "americas": "americas",
-    "na": "americas",
-    "na1": "americas",
-    "br1": "americas",
-    "europe": "europe",
-    "euw1": "europe",
-    "asia": "asia",
-    "kr": "asia",
-}
-
-# Platform routing codes
-PLATFORM_MAPPING = {
-    "americas": "na1",
-    "na": "na1",
-    "na1": "na1",
-    "br1": "br1",
-    "europe": "euw1",
-    "euw1": "euw1",
-    "asia": "kr",
-    "kr": "kr",
-}
-
-
-def get_item_details(raw_item_ids):
-    """Converts numeric item IDs into structured dictionaries with item names and CDN icons."""
-    item_details_list = []
-    for item_id in raw_item_ids:
-        if item_id == 0:
-            item_details_list.append({"id": 0, "name": "Empty Slot", "icon": ""})
-        else:
-            item_info = ITEM_MAP.get(
-                item_id,
-                {
-                    "name": f"Unknown Item ({item_id})",
-                    "icon": f"https://ddragon.leagueoflegends.com/cdn/{DDRAGON_VERSION}/img/item/{item_id}.png",
-                },
-            )
-            item_details_list.append(
-                {
-                    "id": item_id,
-                    "name": item_info["name"],
-                    "icon": item_info.get("icon", ""),
-                }
-            )
-    return item_details_list
-
-
-def get_champion_details(champion_name: str):
-    """Retrieves champion name and CDN icon URL from the global CHAMPION_MAP."""
-    for details in CHAMPION_MAP.values():
-        if details["name"].lower() == champion_name.lower() or details["id"].lower() == champion_name.lower():
-            return {
-                "name": details["name"],
-                "icon": details["icon"]
-            }
-    # Fallback if name doesn't match directly in map keys
-    return {
-        "name": champion_name,
-        "icon": f"https://ddragon.leagueoflegends.com/cdn/{DDRAGON_VERSION}/img/champion/{champion_name}.png"
-    }
-
+app.include_router(router)
 
 @app.get("/")
 def read_root():
     return {
         "status": "Backend server is online!",
         "supported_core_queues": CORE_QUEUES,
-    }
-
-
-# Checks SQLite cache first before querying Riot Account API
-@app.get("/api/player/{region}/{game_name}/{tag_line}")
-def get_or_fetch_player(
-    region: str, game_name: str, tag_line: str, db: Session = Depends(get_db)
-):
-    clean_region = region.strip().lower()
-    cluster_region = CLUSTER_MAPPING.get(clean_region, "americas")
-    platform_region = PLATFORM_MAPPING.get(clean_region, "na1")
-
-    # Check local SQLite cache first (case-insensitive search)
-    db_player = (
-        db.query(models.Player)
-        .filter(
-            models.Player.game_name.ilike(game_name),
-            models.Player.tag_line.ilike(tag_line),
-        )
-        .first()
-    )
-
-    if db_player:
-        return {"source": "database_cache", "data": db_player}
-
-    # Fetch from Riot API if missing in local DB
-    try:
-        account = riot_watcher.account.by_riot_id(
-            cluster_region, game_name, tag_line
-        )
-
-        db_player = models.Player(
-            puuid=account["puuid"],
-            game_name=account["gameName"],
-            tag_line=account["tagLine"],
-            summoner_level=0,
-        )
-
-        db.add(db_player)
-        db.commit()
-        db.refresh(db_player)
-
-    except ApiError as err:
-        status_code = err.response.status_code if hasattr(err, "response") else 400
-        print(f"\n[RIOT API ERROR - Player Lookup] Status: {status_code} | Details: {err}\n")
-        raise HTTPException(
-            status_code=status_code,
-            detail=f"Riot API Error ({status_code}): Could not fetch account for {game_name}#{tag_line}",
-        )
-
-    # Map summoner level using platform region
-    if db_player.summoner_level == 0:
-        try:
-            summoner_info = lol_watcher.summoner.by_puuid(
-                platform_region, db_player.puuid
-            )
-            db_player.summoner_level = summoner_info["summonerLevel"]
-            db.commit()
-            db.refresh(db_player)
-        except ApiError as err:
-            print(f"[RIOT API WARNING - Summoner Level] Could not fetch level: {err}")
-
-    return {"source": "live_api_fetch", "data": db_player}
-
-
-# Match List Endpoint: Focused on Draft (400), Flex (440), and Standard ARAM (450) with start/count pagination
-@app.get("/api/matches/{region}/{puuid}")
-def get_player_matches(
-    region: str,
-    puuid: str,
-    count: int = 10,
-    start: int = 0,
-    queue: int | None = None,
-):
-    clean_puuid = puuid.strip()
-    clean_region = region.strip().lower()
-    cluster_region = CLUSTER_MAPPING.get(clean_region, "americas")
-
-    # Fetch matches from Riot without forcing the queue parameter in the watcher 
-    # to avoid Riot API dropping newer fast modes like Swiftplay
-    kwargs = {
-        "region": cluster_region,
-        "puuid": clean_puuid,
-        "start": start,
-        "count": min(count, 100),
-    }
-
-    try:
-        match_ids = lol_watcher.match.matchlist_by_puuid(**kwargs)
-        queue_label = CORE_QUEUES.get(
-            queue, "All Game Modes" if queue is None else f"Queue {queue}"
-        )
-
-        return {
-            "puuid": clean_puuid,
-            "queue_filter": queue,
-            "mode_name": queue_label,
-            "start_index": start,
-            "count": len(match_ids),
-            "match_ids": match_ids,
-        }
-    except ApiError as err:
-        status_code = err.response.status_code if hasattr(err, "response") else 400
-        print(f"\n[RIOT API ERROR - Matchlist] Status: {status_code} | Details: {err}\n")
-        raise HTTPException(
-            status_code=status_code,
-            detail=f"Riot API Error ({status_code}): Could not fetch match list",
-        )
-
-# NEW: Batch-caches multiple matches for a player into SQLite in one go
-@app.post("/api/matches/{region}/{puuid}/batch-cache")
-def batch_cache_matches(
-    region: str, puuid: str, count: int = 5, db: Session = Depends(get_db)
-):
-    clean_puuid = puuid.strip()
-    clean_region = region.strip().lower()
-    cluster_region = CLUSTER_MAPPING.get(clean_region, "americas")
-
-    try:
-        match_ids = lol_watcher.match.matchlist_by_puuid(
-            region=cluster_region, puuid=clean_puuid, count=min(count, 20)
-        )
-    except ApiError as err:
-        status_code = err.response.status_code if hasattr(err, "response") else 400
-        print(f"\n[RIOT API ERROR - Batch Matchlist] Status: {status_code} | Details: {err}\n")
-        raise HTTPException(
-            status_code=status_code,
-            detail=f"Riot API Error ({status_code}): Could not retrieve match list for batch caching.",
-        )
-
-    cached_count = 0
-    for match_id in match_ids:
-        # Check if already in local DB
-        existing = db.query(models.MatchRecord).filter_by(match_id=match_id, puuid=clean_puuid).first()
-        if existing:
-            continue
-
-        try:
-            match_data = lol_watcher.match.by_id(cluster_region, match_id)
-            info = match_data["info"]
-            s_player = next((p for p in info["participants"] if p["puuid"] == clean_puuid), None)
-
-            if s_player:
-                is_win = s_player["win"]
-                kills = s_player["kills"]
-                deaths = s_player["deaths"]
-                assists = s_player["assists"]
-                kda_ratio = round((kills + assists) / max(1, deaths), 2)
-                raw_items = [s_player[f"item{i}"] for i in range(7)]
-
-                new_match = models.MatchRecord(
-                    match_id=match_id,
-                    puuid=clean_puuid,
-                    champion_name=s_player["championName"],
-                    outcome="Victory" if is_win else "Defeat",
-                    win=is_win,
-                    kills=kills,
-                    deaths=deaths,
-                    assists=assists,
-                    kda_ratio=kda_ratio,
-                    items_json=json.dumps(raw_items),
-                    game_mode=info["gameMode"],
-                    game_duration_seconds=info["gameDuration"],
-                )
-                db.add(new_match)
-                db.commit()
-                cached_count += 1
-        except Exception:
-            continue  
-
-    return {
-        "status": "success",
-        "puuid": clean_puuid,
-        "newly_cached_matches": cached_count,
     }
 
 
@@ -519,7 +178,7 @@ def get_champion_top_players(
     limit = max(1, min(limit, 20))
     details = get_champion_details(champion_name)
     champion_key = champion_name.strip().lower()
-    for champion in CHAMPION_MAP.values():
+    for champion in itr.CHAMPION_MAP.values():
         if champion_key in (champion["name"].lower(), champion["id"].lower()):
             champion_key = champion["id"].lower()
             break
