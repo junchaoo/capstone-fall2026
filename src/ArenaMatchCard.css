@@ -1,0 +1,157 @@
+.match-card__champion-row.match-card__champion-row--solo
+{
+  margin-left: 0;
+}
+
+.match-card__info.arena-card__info
+{
+  margin-left: -5px;
+  align-items: center;   
+  text-align: center;
+  margin-right: 10px;
+}
+
+.arena-card__info .match-card__duration
+{
+  width: auto;   
+}
+
+.match-card__stats.arena-card__stats
+{
+  width: 70px;
+  margin-right: 14px;
+}
+
+.match-card__stats
+{
+  width: 80px;
+}
+
+.arena-card__augments
+{
+  display: grid;
+  grid-template-columns: repeat(3, 24px);
+  gap: 8px;
+  margin-left: 5px;
+}
+
+.arena-card__augment
+{
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #1b2430;
+}
+
+.arena-card__augment--empty
+{
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.arena-card__augment--rarity-0 { box-shadow: 0 0 0 2px #9aa4ad; }
+.arena-card__augment--rarity-1 { box-shadow: 0 0 0 2px #dfbd4d; }
+.arena-card__augment--rarity-2 { box-shadow: 0 0 0 2px #bb60f8; }
+
+.arena-card__items
+{
+  display: grid;
+  grid-template-columns: repeat(3, 30px);
+  grid-auto-rows: 30px;
+  gap: 4px;
+  margin-left: 20px;
+}
+
+.arena-card__item
+{
+  display: block;
+  width: 30px;
+  height: 30px;
+  box-sizing: border-box;
+  border: 0.5px #1b2430;
+  border-style: solid;
+  border-radius: 3px;
+}
+
+.arena-card__item--empty
+{
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.arena-card__item--prismatic
+{
+  box-shadow: 0 0 0 2px #c264ff, 0 0 6px 1px rgba(194, 100, 255, 0.8);
+}
+
+.arena-card__teams
+{
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, auto);
+  gap: 3px 1px;
+  margin-left: 5px;
+}
+
+.arena-card__team
+{
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 60px;
+  padding: 1px 4px 1px 0;
+  border-radius: 6px;
+  margin-left: 10px;
+}
+
+.arena-card__team--me
+{
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.arena-card__team-rank
+{
+  width: 12px;
+  font-size: 0.8rem;
+  text-align: right;
+  color: #3d3737;
+  font-weight: bold;
+}
+
+.arena-card__team-players
+{
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.arena-card__team-player
+{
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.7rem;
+  line-height: 1.1;
+  color: #3d3737;
+}
+
+.arena-card__team-player--me
+{
+  font-weight: bold;
+  color: #1b2430;
+}
+
+.arena-card__team-icon
+{
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.arena-card__team-name
+{
+  width: 40px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

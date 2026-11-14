@@ -20,7 +20,7 @@ export async function fetchSummoner(gameName: string, tagLine: string): Promise<
   return res.json();
 }
  
-export async function fetchMatches(puuid: string, count = 10, queue = 420): Promise<MatchSummary[]>
+export async function fetchMatches(puuid: string, count = 10, queue = 1750): Promise<MatchSummary[]>
 {
   const res = await fetch(`${API_BASE}/matches?puuid=${puuid}&count=${count}&queue=${queue}`);
   

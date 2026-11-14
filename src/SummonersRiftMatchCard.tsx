@@ -1,9 +1,11 @@
-import type { MatchSummary } from './match';
+import type { SummonersRiftMatch } from './match';
 import './MatchHistory.css';
- 
-interface MatchCardProps 
+import Slot from './Slot';
+import { timeAgo } from './timeAgo';
+
+interface SummonersRiftMatchCardProps
 {
-  match: MatchSummary;
+  match: SummonersRiftMatch;
 }
  
   const ROLE_ICONS: Record<string, string> = 
@@ -23,34 +25,7 @@ interface MatchCardProps
     450: 'ARAM',
   };
 
-  function timeAgo(timestamp: number): string
-  {
-    const seconds = Math.floor((Date.now() - timestamp) / 1000); // Date.now returns in milliseconds
-    const units: [string, number][] =                            // convert to seconds
-    [
-      ['day', 86400],
-      ['hour', 3600],
-      ['minute', 60],
-    ];
-
-    for (const [name, size] of units)
-    {
-      const value = Math.floor(seconds / size);
-      if (value >= 1) return `${value} ${name}${value > 1 ? 's' : ''} ago`;
-    }
-    return 'Just now';
-  }
- 
-  function Slot({ url, className = '' }: { url: string | null; className?: string }) 
-  {
-    return url ? (
-      <img src={url} alt="" className={`match-card__slot ${className}`} />
-    ) : (
-      <div className={`match-card__slot match-card__slot--empty ${className}`} />
-    );
-  }
-
-export default function MatchCard({ match }: MatchCardProps) 
+export default function SummonersRiftMatchCard({ match }: SummonersRiftMatchCardProps) 
 {
   const roleIcon = ROLE_ICONS[match.teamPosition];
 

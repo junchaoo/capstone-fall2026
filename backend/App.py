@@ -17,13 +17,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+PRISMATIC_ID_RANGE = range(440000, 450000)
 lol_watcher = LolWatcher(API_KEY)
 riot_watcher = RiotWatcher(API_KEY)
 
 _ddragon_version_cache = None
 _rune_cache = None
 _spell_cache = None
+_augment_cache = None
 
 def get_latest_version():
     """Data Dragon needs patch version for image URLs.
@@ -55,19 +56,18 @@ def get_summoner(gameName: str, tagLine: str, region: str = "americas", platform
 
 
 @app.get("/api/matches")
-def get_matches(puuid: str, region: str = "americas", count: int = 10, queue: int = 420):
+def get_matches(puuid: str, region: str = "americas", count: int = 10, queue: int = 1750):
     # queue defaults to 420 = Ranked Solo/Duo
     try:
         match_ids = lol_watcher.match.matchlist_by_puuid(region, puuid, count=count, queue=queue)
         matches = [
-            summarize_match(lol_watcher.match.by_id(region, match_id), puuid)
+            summarize(lol_watcher.match.by_id(region, match_id), puuid)
             for match_id in match_ids
         ]
     except ApiError as err:
         raise HTTPException(status_code=err.response.status_code, detail=str(err))
 
     return matches
-
 
 def get_spell_lookup():
     """maps summoner spell IDs to icon URLs. fetched once, then cached."""
@@ -102,6 +102,128 @@ def get_rune_lookup():
         _rune_cache = lookup
     return _rune_cache
 
+ARENA_AUGMENTS_URL = "https://raw.communitydragon.org/latest/cdragon/arena/en_us.json"
+CHERRY_AUGMENTS_URL = "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/cherry-augments.json"
+
+RARITY_VALUES = {"kSilver": 0, "kGold": 1, "kPrismatic": 2}
+
+
+def fetch_json(url):
+    try:
+        return requests.get(url, timeout=10).json()
+    except (requests.RequestException, ValueError):
+        print("Could not load:", url)
+        return None
+
+
+def cdragon_asset_url(path):
+    # "/lol-game-data/assets/ASSETS/UX/Kiwi/..." -> ".../game/assets/ux/kiwi/..."
+    relative = path.replace("/lol-game-data/assets/", "", 1).lower()
+    return f"https://raw.communitydragon.org/latest/game/{relative}"
+
+
+def get_augment_lookup():
+    """maps augment IDs to name, icon URL and rarity. fetched once, then cached."""
+    global _augment_cache
+    if _augment_cache is not None:
+        return _augment_cache
+
+    arena = fetch_json(ARENA_AUGMENTS_URL)
+    cherry = fetch_json(CHERRY_AUGMENTS_URL)
+
+    lookup = {}
+
+    # 1. the arena file 
+    for aug in (arena or {}).get("augments", []):
+        icon = aug.get("iconLarge") or aug.get("iconSmall")
+        lookup[aug["id"]] = {
+            "name": aug["name"],
+            "iconUrl": f"https://raw.communitydragon.org/latest/game/{icon}" if icon else None,
+            "rarity": aug.get("rarity", 0),
+        }
+
+    # 2. cherry-augments.json: fills in the ARAM Mayhem ("kiwi") augments the arena file is missing.
+    #    setdefault means an ID already found in the arena file is never overwritten.
+    for aug in cherry or []:
+        icon_path = aug.get("augmentSmallIconPath")
+        lookup.setdefault(aug["id"], {
+            "name": aug.get("nameTRA") or aug.get("augmentNameId", ""),
+            "iconUrl": cdragon_asset_url(icon_path) if icon_path else None,
+            "rarity": RARITY_VALUES.get(aug.get("rarity"), 0),
+        })
+
+    if arena is not None and cherry is not None:
+        _augment_cache = lookup   # only cache a complete result, so a failed download is retried
+    return lookup
+
+def arena_item(item_id, version):
+    if item_id == 0:
+        return None
+    return {
+        "iconUrl": f"https://ddragon.leagueoflegends.com/cdn/{version}/img/item/{item_id}.png",
+        "prismatic": item_id in PRISMATIC_ID_RANGE,
+    }
+
+def summarize_arena_match(match, puuid):
+    info = match["info"]
+    player = next(p for p in info["participants"] if p["puuid"] == puuid)
+    version = get_latest_version()
+
+    # item6 (arcane sweeper) is skipped because everyone has it no matter what
+    items = [arena_item(player.get(f"item{i}", 0), version) for i in range(6)]
+
+    # augment slots 1-6; 0 means that slot is empty
+    augment_ids = [
+        player[f"playerAugment{i}"]
+        for i in range(1, 7)
+    ]
+
+    augments = get_augment_lookup()
+    augment_data = [
+        augments.get(aug_id) or {"name": f"Augment {aug_id}", "iconUrl": None, "rarity": 0}
+        for aug_id in augment_ids
+    ]
+
+
+
+    # groups players into teams by playerSubteamId, then orders the teams by placement
+    teams = {}
+    for p in info["participants"]:
+        team = teams.setdefault(p["playerSubteamId"], {"placement": p["placement"], "players": []})
+        team["players"].append({
+            "puuid": p["puuid"],
+            "name": p.get("riotIdGameName") or p.get("summonerName") or "Unknown",
+            "tagLine": p.get("riotIdTagline", ""),
+            "championName": p["championName"],
+            "championIconUrl": f"https://ddragon.leagueoflegends.com/cdn/{version}/img/champion/{p['championName']}.png",
+            "isMe": p["puuid"] == puuid,
+        })
+    ordered_teams = sorted(teams.values(), key=lambda t: t["placement"])
+
+    return {
+        "kind": "arena",
+        "matchId": match["metadata"]["matchId"],
+        "queueId": info["queueId"],
+        "win": player["win"],
+        "placement": player["placement"],
+        "championName": player["championName"],
+        "championIconUrl": f"https://ddragon.leagueoflegends.com/cdn/{version}/img/champion/{player['championName']}.png",
+        "kills": player["kills"],
+        "deaths": player["deaths"],
+        "assists": player["assists"],
+        "gameDuration": info["gameDuration"],
+        "gameEndTimestamp": info.get("gameEndTimestamp") or info["gameStartTimestamp"],
+        "items": items,
+        "augmentIds": augment_ids,
+        "augments": augment_data,
+        "teams": ordered_teams,
+        "champLevel": player["champLevel"],
+    }
+
+def summarize(match, puuid):
+    if match["info"]["gameMode"] == "CHERRY":
+        return summarize_arena_match(match, puuid)
+    return summarize_match(match, puuid)
 
 ROLE_ORDER = {"TOP": 0, "JUNGLE": 1, "MIDDLE": 2, "BOTTOM": 3, "UTILITY": 4}
 def sort_by_team_and_role(p):
@@ -111,7 +233,6 @@ def summarize_match(match, puuid):
     # riot's raw match object has too much data, so return only what's needed
     info = match["info"]
     player = next(p for p in info["participants"] if p["puuid"] == puuid)
-    print({k: v for k, v in player.items() if "item" in k.lower() or "quest" in k.lower() or "role" in k.lower()})
     version = get_latest_version()
 
     #sort by team and role. columns line up based on team roles
@@ -142,6 +263,7 @@ def summarize_match(match, puuid):
     secondary_tree_id = styles["subStyle"]["style"]
 
     return {
+        "kind": "summonersRift",
         "matchId": match["metadata"]["matchId"],
         "championName": player["championName"],
         "championIconUrl": f"https://ddragon.leagueoflegends.com/cdn/{version}/img/champion/{player['championName']}.png",

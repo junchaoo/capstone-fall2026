@@ -9,6 +9,8 @@ interface MatchHistoryProps
   gameName: string;
   tagLine: string;
 }
+
+
  
 export default function MatchHistory({ gameName, tagLine }: MatchHistoryProps) 
 {
@@ -16,7 +18,7 @@ export default function MatchHistory({ gameName, tagLine }: MatchHistoryProps)
   const [matches, setMatches] = useState<MatchSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
- 
+  
   useEffect(() => 
   {
     let cancelled = false; // avoids setting state if the component unmounts mid-fetch
